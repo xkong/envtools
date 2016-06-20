@@ -50,13 +50,24 @@ void SummedAreaTable::createLum(float* rgb, const uint width, const uint height,
     float aU, aV;
 
 
+    _minLum = DBL_MAX;
+    _maxLum = DBL_MIN;
+    _minPonderedLum = DBL_MAX;
+    _maxPonderedLum = DBL_MIN;
+    _minR = DBL_MAX;
+    _maxR = DBL_MIN;
+    _minB = DBL_MAX;
+    _maxG = DBL_MIN;
+    _minB = DBL_MAX;
+    _maxB = DBL_MIN;
+    
     for (uint y = 0; y < height; ++y) {
         const double posY = (double)y / (double)height;
 
         // the latitude-longitude format overrepresents the area of regions near the poles.
         // To compensate for this, the pixels of the probe image
         // should first be scaled by cosφ.
-        // (φ == 0 at middle heightof image input)
+        // (φ == 0 at middle height of image input)
         const double cosLat = cos(PI* (posY - 0.5));
 
         for (uint x = 0; x < width;  ++x) {
@@ -69,12 +80,23 @@ void SummedAreaTable::createLum(float* rgb, const uint width, const uint height,
 
             double ixy = luminance(r,g,b);
 
+            // update Min/Max before pondering
+            _minLum = std::min(ixy, _minLum);
+            _maxLum = std::max(ixy, _maxLum);
+            
+            _minR = std::min(r, _minR);
+            _maxR = std::max(r, _maxR);
+            
+            _minG = std::min(g, _minG);
+            _maxG = std::max(g, _maxG);
+            
+            _minB = std::min(b, _minB);
+            _maxB = std::max(b, _maxB);
+            
             ixy *= cosLat;
             //r *= cosLat;
             //g *= cosLat;
             //b *= cosLat;
-
-
 
             // convert panorama to direction x,y,z
             //https://www.shadertoy.com/view/4dsGD2
@@ -98,6 +120,8 @@ void SummedAreaTable::createLum(float* rgb, const uint width, const uint height,
             //b *= solidAngle;
 
             _sat[i] = ixy;
+            _minPonderedLum = std::min(ixy, _minPonderedLum);
+            _maxPonderedLum = std::max(ixy, _maxPonderedLum);
 
             _r[i] = r;
             _g[i] = g;
@@ -129,67 +153,92 @@ void SummedAreaTable::createLum(float* rgb, const uint width, const uint height,
     }
 
 
-    // now we sum
-    for (uint y = 0; y < height; ++y) {
-        for (uint x = 0; x < width;  ++x) {
-            const uint i = y*width + x;
 
-            // https://en.wikipedia.org/wiki/Summed_area_table
-            _sat[i] = _sat[i] + I(x-1, y) + I(x, y-1) - I(x-1, y-1);
+//#define ENHANCE_PRECISION 1
+#ifdef ENHANCE_PRECISION
 
-            _r[i]   = _r[i]   + R(x-1, y) + R(x, y-1) - R(x-1, y-1);
-            _g[i]   = _g[i]   + G(x-1, y) + G(x, y-1) - G(x-1, y-1);
-            _b[i]   = _b[i]   + B(x-1, y) + B(x, y-1) - B(x-1, y-1);
+        // enhances precision of SAT
+        // make values be around [-0.5, 0.5]
+        // https://developer.amd.com/wordpress/media/2012/10/SATsketch-siggraph05.pdf
+        const double rangeLum = _maxLum - _minLum;
+        const double rangePonderedLum = _maxPonderedLum -_minPonderedLum;        
+        const double rangeR = _maxR - _minR;
+        const double rangeG = _maxG - _minG;
+        const double rangeB = _maxB - _minB;
+        for (uint y = 0; y < height; ++y) {
+            for (uint x = 0; x < width;  ++x) {
+                const uint i = y*width + x;
 
+                _sat[i] = ((_sat[i] - _minPonderedLum) / rangePonderedLum) - 0.5;
+            
+                _r[i]  = ((_r[i] - _minR) / rangeR) - 0.5;
+                _g[i]  = ((_g[i] - _minG) / rangeG) - 0.5;
+                _b[i]  = ((_b[i] - _minB) / rangeB) - 0.5;
+            }
         }
-    }
+#endif
+    
+        // now we sum
+        for (uint y = 0; y < height; ++y) {
+            for (uint x = 0; x < width;  ++x) {
+                const uint i = y*width + x;
+            
+                // https://en.wikipedia.org/wiki/Summed_area_table
+                _sat[i] = _sat[i] + I(x-1, y) + I(x, y-1) - I(x-1, y-1);
+
+                _r[i]   = _r[i]   + R(x-1, y) + R(x, y-1) - R(x-1, y-1);
+                _g[i]   = _g[i]   + G(x-1, y) + G(x, y-1) - G(x-1, y-1);
+                _b[i]   = _b[i]   + B(x-1, y) + B(x, y-1) - B(x-1, y-1);
+
+            }
+        }
 
 
-    // integral log
-    for (uint y = 0; y < _height; ++y)
-    {
-        for (uint x = 0; x < _width;  ++x)
+        // integral log
+        for (uint y = 0; y < _height; ++y)
         {
-            const uint i = y*width + x;
+            for (uint x = 0; x < _width;  ++x)
+            {
+                const uint i = y*width + x;
 
-            double sum = I(x, y);
-            if (sum > 0) sum = log(I(x, y));
+                double sum = I(x, y);
+                if (sum > 0) sum = log(I(x, y));
 
-            _sat1[i] = sum + I1(x-1, y) + I1(x, y-1) - I1(x-1, y-1);
+                _sat1[i] = sum + I1(x-1, y) + I1(x, y-1) - I1(x-1, y-1);
+            }
         }
-    }
 
-    // Integral image of higher power
-    // http://vision.okstate.edu/pubs/ssiai_tp_1.pdf
-    // integral 2
-    for (uint y = 0; y < _height; ++y)
-    {
-        for (uint x = 0; x < _width;  ++x)
+        // Integral image of higher power
+        // http://vision.okstate.edu/pubs/ssiai_tp_1.pdf
+        // integral 2
+        for (uint y = 0; y < _height; ++y)
         {
-            const uint i = y*width + x;
-            _sat2[i] = I(x, y)*I(x, y) + I2(x-1, y) + I2(x, y-1) - I2(x-1, y-1);
+            for (uint x = 0; x < _width;  ++x)
+            {
+                const uint i = y*width + x;
+                _sat2[i] = I(x, y)*I(x, y) + I2(x-1, y) + I2(x, y-1) - I2(x-1, y-1);
+            }
         }
-    }
-    // integral 3
-    for (uint y = 0; y < _height; ++y) {
-        for (uint x = 0; x < _width;  ++x) {
-            const uint i = y*width + x;
-            _sat3[i] = I(x, y)*I(x, y)*I(x, y) + I3(x-1, y) + I3(x, y-1) - I3(x-1, y-1);
+        // integral 3
+        for (uint y = 0; y < _height; ++y) {
+            for (uint x = 0; x < _width;  ++x) {
+                const uint i = y*width + x;
+                _sat3[i] = I(x, y)*I(x, y)*I(x, y) + I3(x-1, y) + I3(x, y-1) - I3(x-1, y-1);
+            }
         }
-    }
-    // integral 4
-    for (uint y = 0; y < _height; ++y) {
-        for (uint x = 0; x < _width;  ++x) {
-            const uint i = y*width + x;
-            _sat4[i] = I(x, y)*I(x, y)*I(x, y)*I(x, y) + I4(x-1, y) + I4(x, y-1) - I4(x-1, y-1);
+        // integral 4
+        for (uint y = 0; y < _height; ++y) {
+            for (uint x = 0; x < _width;  ++x) {
+                const uint i = y*width + x;
+                _sat4[i] = I(x, y)*I(x, y)*I(x, y)*I(x, y) + I4(x-1, y) + I4(x, y-1) - I4(x-1, y-1);
+            }
         }
-    }
-    // integral 5
-    for (uint y = 0; y < _height; ++y) {
-        for (uint x = 0; x < _width;  ++x) {
-            const uint i = y*width + x;
-            _sat5[i] = I(x, y)*I(x, y)*I(x, y)*I(x, y) + I5(x-1, y) + I5(x, y-1) - I5(x-1, y-1);
+        // integral 5
+        for (uint y = 0; y < _height; ++y) {
+            for (uint x = 0; x < _width;  ++x) {
+                const uint i = y*width + x;
+                _sat5[i] = I(x, y)*I(x, y)*I(x, y)*I(x, y) + I5(x-1, y) + I5(x, y-1) - I5(x-1, y-1);
+            }
         }
-    }
 
 }

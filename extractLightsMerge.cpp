@@ -3,8 +3,14 @@
 /**
  * convert Env map Regions to Lights
  */
-void createLightsFromRegions(const SatRegionVector& regions, LightVector& lights, const float *rgba, const int width, const int height, const int nc)
+void createLightsFromRegions(const SatRegionVector& regions, LightVector& lights, const float *rgba, const int width, const int height, const int nc, const SummedAreaTable &lum_sat)
 {
+    const double maxR = lum_sat.getMaxR();
+    const double maxG = lum_sat.getMaxG();
+    const double maxB = lum_sat.getMaxB();
+    //const double maxLum = lum_sat.getMaxLum();
+    const double maxPonderedLum = lum_sat.getMaxPonderedLum();
+
     // convert region into lights
     for (SatRegionVector::const_iterator region = regions.begin(); region != regions.end(); ++region)
     {
@@ -24,30 +30,64 @@ void createLightsFromRegions(const SatRegionVector& regions, LightVector& lights
         l._centroidPosition = region->centroid();
         // light area Size
         l._areaSize = region->areaSize();
-
-        // sat lum sum of area
-        l._sum = region->getSum();
-
-        // sat lum sum of area
-        l._variance = region->getVariance();
-
-        // average Result
-        l._lumAverage = region->getMean();
-        l._rAverage = region->_r / l._areaSize;
-        l._gAverage = region->_g / l._areaSize;
-        l._bAverage = region->_b / l._areaSize;
-
-
+        
         l._sortCriteria = l._areaSize;
         //l._sortCriteria = l._lumAverage;
 
         const uint i = static_cast<uint>(l._centroidPosition[1]*width + l._centroidPosition[0]);
 
+        // compute area values, as SAT introduce precision errors
+        // due to high sum values against small data values
+        // we use here less error inducing computations
         double r = rgba[i*nc + 0];
         double g = rgba[i*nc + 1];
         double b = rgba[i*nc + 2];
         l._luminancePixel = luminance(r,g,b);
 
+        double rSum = 0.0;
+        double gSum = 0.0;
+        double bSum = 0.0;
+        double lumSum = 0.0;
+        
+        for (int y1 = l._y; y1 < l._y+l._h; ++y1)
+        {
+            for (int x1 = l._x; x1 < l._x+l._w;  ++x1)
+            {
+                const uint i = (x1+y1*width)*nc;
+                
+                r = rgba[i];
+                g = rgba[i + 1];
+                b = rgba[i + 2];
+                
+                lumSum += luminance(r,g,b);
+                rSum += r;
+                gSum += g;
+                bSum += b;               
+                
+            }
+        }
+        
+        // luminosity
+        l._sum = region->getSum();
+        //l._sum = lumSum;
+
+        l._lumAverage = region->getMean();
+        // l._lumAverage =  / l._areaSize;
+
+        l._variance = ((l._sum*l._sum) / l._areaSize) - (l._lumAverage*l._lumAverage);
+
+        // Colors
+        l._rAverage = rSum / l._areaSize;
+        l._gAverage = gSum / l._areaSize;
+        l._bAverage = bSum / l._areaSize;
+
+        // if value out of bounds
+        l._error =  l._rAverage > maxR
+            || l._gAverage > maxG
+            || l._bAverage > maxB
+            || l._lumAverage > maxPonderedLum;
+                    
+        
         lights.push_back(l);
     }
 
