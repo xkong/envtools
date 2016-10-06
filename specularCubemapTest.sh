@@ -4,7 +4,7 @@ export PATH=./:$PATH
 rm -f out/*
 mkdir -p out
 
-./process_environment.py --fixedge --write-by-channel --nbSamples 512 --backgroundSamples 512 testData/graceCath.jpeg out/
+./process_environment.py --approximateDirectionalLights --fixedge --write-by-channel --nbSamples 512 --backgroundSamples 512 testData/graceCath.jpeg out/
 
 DIFF=$(oiiotool --diff -a --fail 0.05 /tmp/specular_4.tif testData/specular_4.tif)
 
