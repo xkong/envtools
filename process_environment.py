@@ -16,7 +16,6 @@ cubemap_packer_cmd = "cubemapPacker"
 panorama_packer_cmd = "panoramaPacker"
 envremap_cmd = "envremap"
 samplesGGX_cmd = "samplesGGX"
-extractLight_cmd = "extractLight"
 extractLights_cmd = "extractLights"
 envBackground_cmd = "envBackground"
 compress_7Zip_cmd = "7z"
@@ -120,7 +119,7 @@ class ProcessEnvironment(object):
         self.textures = {}
         self.prefilterGPU = None
 
-        self.approximate_directional_lights = kwargs.get("approximate_directional_lights", True)
+        self.approximate_directional_lights = kwargs.get("approximate_directional_lights", False)
 
         self.compression_level = 9
 
@@ -460,16 +459,6 @@ class ProcessEnvironment(object):
 
         self.cubemap_highres = cubemap_highres
 
-    def extract_light(self):
-        cmd = "{} {}".format(extractLight_cmd, self.mipmap_pattern)
-        output_log = execute_command(cmd, verbose=False, print_command=True)
-        lines_list = output_log.split("\n")
-        for line in lines_list:
-            index = line.find("direction")
-            if index != -1:
-                self.main_light = line
-        print output_log
-
     def extract_lights(self):
 
         # compute it one time for panorama
@@ -510,11 +499,6 @@ class ProcessEnvironment(object):
         if self.approximate_directional_lights:
             print "approximate_directional_lights ", self.approximate_directional_lights
             # extract lights from environment
-            # one main light
-            start_tick = time.time()
-            self.extract_light()
-            print "== {} extract_light ==".format(time.time() - start_tick)
-            print ""
 
             # multiple lights
             start_tick = time.time()
@@ -603,7 +587,7 @@ def define_arguments():
     parser.add_argument("--fixedge", action="store_true", help="fix edge for cubemap")
     parser.add_argument("--pretty", action="store_true", help="generate a config file pretty for human")
     parser.add_argument("--approximateDirectionalLights", action="store_true",
-                        dest="approximate_directional_lights", help="generate directional lights from environment", default="approximate_directional_lights")
+                        dest="approximate_directional_lights", help="generate directional lights from environment")
 
     return parser
 
