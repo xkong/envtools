@@ -92,8 +92,8 @@ void outputJSON(const LightVector &lights, uint height, uint width, uint imageAr
 
     for (LightVector::const_iterator l = lights.begin(); l != lights.end() && i < lightNum; ++l) {
 
-        const double x = l->_centroidPosition[1] / height;
-        const double y = l->_centroidPosition[0] / width;
+        const double x = l->_centroidPosition[0] / width;
+        const double y = l->_centroidPosition[1] / height;
 
         const double w = static_cast <double>(l->_w) / width;
         const double h = static_cast <double>(l->_h) / height;
@@ -101,14 +101,14 @@ void outputJSON(const LightVector &lights, uint height, uint width, uint imageAr
         // convert x,y to direction
         Vec3d d;
 
-        //https://www.shadertoy.com/view/4dsGD2
-        double theta = (1.0 - l->_centroidPosition[1] / height) * PI;
-        double phi   = l->_centroidPosition[0] / width * TAU;
+        // https://www.desmos.com/calculator/2niuw1lpm5
+        double phi   = (x * 2.0 * PI) - PI * 0.5;
+        double theta = (1.0 - y) * PI;
 
         // Equation from http://graphicscodex.com  [sphry]
-        d[0] =  sin(theta) * sin(phi);
+        d[0] =  sin(theta) * cos(phi);
         d[1] =             cos(theta);
-        d[2] =  sin(theta) * cos(phi);
+        d[2] =  sin(theta) * sin(phi);
 
         // normalize direction
         const double norm = d.normalize();
