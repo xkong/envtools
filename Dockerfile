@@ -27,8 +27,7 @@ RUN apt-get -y update --fix-missing && apt-get install -y \
     software-properties-common \
     python \
     wget \
-    libtbb-dev \
-    python-pyopencl
+    libtbb-dev
 
 RUN echo "/usr/local/lib64/" >/etc/ld.so.conf.d/lib64.conf
 RUN echo "/usr/local/lib/" >/etc/ld.so.conf.d/lib.conf
