@@ -145,3 +145,33 @@ This tool generates cubemap environment blurred to be used as background environ
 - `-n samples`
 
     Number of samples used to generate the lut.
+
+### Lights Extractions
+
+This tool generates lights list in JSON format, extracted from the environment 
+
+`extractLights [-a max_light_areas] [-l max_light_length] [-r ratioLight] [-n numCuts] [-d] [-m num_lights] file.hdr|exr`
+
+- `-m num_lights`
+
+   export JSON max number of lights and cull others. ( default is 1, 0 is unlimited)
+   
+- `-a max_light_areas`
+
+   A max limit to the  Area Surface a light can have. (default 0.05)
+
+- `-l max_light_length`
+
+   A max limit to the height or width a light can have. (default 0.05)
+
+- `-r ratioLight`
+
+   a max ratio for light power can have. (default 0.5)
+
+- `-n numCuts`
+
+    Number of subdivision levers used to generate the lights list. (default is 8)
+
+- `-d` 
+   
+    generates a out/debug_variance.png file for debugging light cuts visually. (default is off)

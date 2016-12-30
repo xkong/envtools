@@ -81,34 +81,39 @@ void medianVarianceCut(const SummedAreaTable& img, const uint n, SatRegionVector
 
 
 
-void outputJSON(const LightVector &lights, uint height, uint width, uint imageAreaSize, double luminanceSum)
+void outputJSON(const LightVector &lights, uint height, uint width, uint imageAreaSize, double luminanceSum, int numLights)
 {
     size_t i = 0;
-    size_t lightNum = lights.size();
+    size_t numLightsMax = numLights > 0 ? numLights : lights.size();
 
     std::cout << "[";
-
     double globalVariance = luminanceSum /imageAreaSize;
 
-    for (LightVector::const_iterator l = lights.begin(); l != lights.end() && i < lightNum; ++l) {
+    for (LightVector::const_iterator l = lights.begin(); l != lights.end() && i < numLightsMax; ++l) {
 
-        const double x = l->_centroidPosition[1] / height;
-        const double y = l->_centroidPosition[0] / width;
+        const double x = l->_centroidPosition[0];
+        const double y = l->_centroidPosition[1];
 
-        const double w = static_cast <double>(l->_w) / width;
-        const double h = static_cast <double>(l->_h) / height;
+        // under hemisphere, we cull
+        if (y >= 0.5) continue;
+
+        const double w = l->_w;
+        const double h = l->_h;
 
         // convert x,y to direction
         Vec3d d;
 
         //https://www.shadertoy.com/view/4dsGD2
-        double theta = (1.0 - l->_centroidPosition[1] / height) * PI;
-        double phi   = l->_centroidPosition[0] / width * TAU;
+        // Desmos math demonstration / check
+        // a,b,c => x,y,z direction axis
+        // https://www.desmos.com/calculator/2niuw1lpm5
+        double phi   = (x * 2.0 * PI) - PI * 0.5;
+        double theta = (1.0 - y) * PI;
 
         // Equation from http://graphicscodex.com  [sphry]
-        d[0] =  sin(theta) * sin(phi);
+        d[0] =  sin(theta) * cos(phi);
         d[1] =             cos(theta);
-        d[2] =  sin(theta) * cos(phi);
+        d[2] =  sin(theta) * sin(phi);
 
         // normalize direction
         const double norm = d.normalize();
@@ -120,8 +125,7 @@ void outputJSON(const LightVector &lights, uint height, uint width, uint imageAr
 
 
         // 1 JSON object per light
-        std::cout << "{";
-        std::cout << " \"position\": [" << x << ", " << y << "] ,";
+        std::cout << "{";;
         std::cout << " \"direction\": [" << d[0] << ", " << d[1] << ", " << d[2] << "], ";
         std::cout << " \"luminosity\": " << (l->_lumAverage) << ", ";
         std::cout << " \"color\": [" << rCol << ", " << gCol << ", " << bCol << "], ";
@@ -132,7 +136,7 @@ void outputJSON(const LightVector &lights, uint height, uint width, uint imageAr
         std::cout << " \"error\": " << (l->_error ? 1 : 0 ) << " ";
         std::cout << " }" << std::endl;
 
-        if (i < lightNum - 1){
+        if (i < numLightsMax - 1){
 
             std::cout << ",";
 
@@ -148,7 +152,7 @@ void outputJSON(const LightVector &lights, uint height, uint width, uint imageAr
 ////////////////////////////////////////////////
 static int usage(const std::string& name)
 {
-    std::cerr << "Usage: " << name << " [-a Areasize] [-r ratioLight] [-n numCuts] [-d] file.hdr" << std::endl;
+    std::cerr << "Usage: " << name << " [-a max_light_areas] [-l max_light_length] [-r ratioLight] [-n numCuts] [-m lightsNum] [-d] file.hdr" << std::endl;
     return 1;
 }
 
@@ -159,8 +163,13 @@ static int usage(const std::string& name)
 int main(int argc, char** argv)
 {
     // max area encased by light extracted, ratio of env map size
-    // default is using Area of 5% of EnvMap as dir approx light
-    float ratioAreaSizeMax = 0.01f;
+    // default is using Area of 1% of EnvMap as dir approx light
+    // 32x32 pixels out of 4096x2048
+
+    double ratioLengthSizeMax = 0.08;
+    double ratioAreaSizeMax = 0.05;
+    int numLights = 1;
+
     // Idea is to limit light extraction to analytic directional light
     //  So we must limite area and power extracted
     // as more the power means more difference with Env lighting
@@ -172,15 +181,17 @@ int main(int argc, char** argv)
 
     int c;
     bool debug = false;
-    
-    while ((c = getopt(argc, argv, "a:r:n:d")) != -1)
+
+    while ((c = getopt(argc, argv, "a:dl:m:n:r:")) != -1)
     {
         switch (c)
         {
         case 'a': ratioAreaSizeMax = atof(optarg); break;
-        case 'r': ratioLuminanceLight = atof(optarg); break;
-        case 'n': numCuts = atoi(optarg); break;
         case 'd': debug = true; break;
+        case 'l': ratioLengthSizeMax = atof(optarg); break;
+        case 'm': numLights = atoi(optarg); break;
+        case 'n': numCuts = atoi(optarg); break;
+        case 'r': ratioLuminanceLight = atof(optarg); break;
 
         default: return usage(argv[0]);
         }
@@ -240,19 +251,22 @@ int main(int argc, char** argv)
         /// Light Max luminance in percentage
         double luminanceSum = lum_sat.getSum();
         lum_sat.sum(0,0,
-                                          width-1,0,
-                                          width-1,height-1,
-                                          0,height-1);
-        
-        const double luminanceMaxLight = ratioLuminanceLight*luminanceSum;
+                    width-1,0,
+                    width-1,height-1,
+                    0,height-1);
+
+        const double luminanceMaxLight =  ratioLuminanceLight * luminanceSum;
 
         // And he saw that light was good, and separated light from darkness
-        createLightsFromRegions(regions, lights, rgba, width, height, nc, lum_sat);
+        createLightsFromRegions(regions, lights, rgba, luminanceMaxLight, width, height, nc, lum_sat);
 
         // sort lights
         // the smaller, the more powerful luminance
         std::sort(lights.begin(), lights.end());
 
+
+        const double areaSizeMax = ratioAreaSizeMax;
+        const double degreeMerge = 35.0;
 
 
 #define MERGE 1
@@ -262,11 +276,14 @@ int main(int argc, char** argv)
         // default to size of the median region size
         // if lots of small lights => give small area
         // if lots of big lights => give big area
-        const uint mergeindexPos =  (lights.size() * 25) / 100;
-        const double mergeAreaSize = lights[mergeindexPos]._areaSize;
-        //const double mergeAreaSize = 0.1 * imageAreaSize;
+        //const uint mergeindexPos =  (lights.size() * 25) / 100;
+        //const double mergeAreaSize = lights[mergeindexPos]._areaSize;
 
-        uint mergedLights = mergeLights(lights, mainLights, width, height, mergeAreaSize, luminanceMaxLight);
+        const double mergeAreaSize = areaSizeMax;
+
+        uint mergedLights = mergeLights(lights, mainLights, width, height,
+                                        mergeAreaSize, ratioLengthSizeMax,
+                                        luminanceMaxLight, degreeMerge);
 
 
         // sort By sum now (changed the sort Criteria during merge)
@@ -274,13 +291,13 @@ int main(int argc, char** argv)
         std::sort(mainLights.begin(), mainLights.end());
         std::reverse(mainLights.begin(), mainLights.end());
 
-#define SELECT 1
+//#define SELECT 1
 #ifdef SELECT
 
         // now keep lights from inside merged Zone
         lights.clear();
-        const double areaSizeMax = ratioAreaSizeMax * imageAreaSize;
-        mergedLights = selectLights(mainLights, lights, width, height, areaSizeMax, luminanceMaxLight, luminanceSum);
+
+        mergedLights = selectLights(mainLights, lights, width, height, areaSizeMax, luminanceMaxLight, luminanceSum, degreeMerge);
 
         mainLights.clear();
         mainLights.resize(lights.size());
@@ -293,10 +310,27 @@ int main(int argc, char** argv)
 
 #endif // SELECT
 
+//#define NEARLIGHT_MERGE 1
+#ifdef NEARLIGHT_MERGE
+
+        // now keep lights from inside merged Zone
+        //lights.clear();
+
+        mergeNearLights(mainLights, areaSizeMax, ratioLengthSizeMax, degreeMerge);
+
+        // sort By sum now (changed the sort Criteria during merge)
+        // biggest sum first
+        std::sort(mainLights.begin(), mainLights.end());
+        std::reverse(mainLights.begin(), mainLights.end());
+        std::copy(mainLights.begin(), mainLights.end(), lights.begin());
+
+
+#endif // NEARLIGHT_MERGE
+
 #else
 
-        newLights.resize(lights.size());
-        std::copy(lights.begin(), lights.end(), newLights.begin());
+        mainLights.resize(lights.size());
+        std::copy(lights.begin(), lights.end(), mainLights.begin());
 
 #endif
 
@@ -308,14 +342,14 @@ int main(int argc, char** argv)
         //outputJSON(lights, height, width, imageAreaSize );
 
         // Merged Light sorted By Luminance intensity
-        outputJSON(mainLights, height, width, imageAreaSize, luminanceSum);
+        outputJSON(mainLights, height, width, imageAreaSize, luminanceSum, numLights);
 
 
 
-        if (debug){            
-            debugDrawLight(regions, lights, mainLights, rgba, width, height, nc);
+        if (debug){
+            debugDrawLight(regions, lights, mainLights, rgba, width, height, nc, lum_sat.getMaxLum(), lum_sat.getMinLum(), numLights);
         }
-        
+
 
 
     }

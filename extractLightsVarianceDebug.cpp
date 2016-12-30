@@ -58,40 +58,66 @@ void drawLight( uchar* rgba, int width, int height, const Light &l, const uint n
 {
     int ci;
 
-    const uint x0 = static_cast<uint> (l._centroidPosition[0]);
-    const uint y0 = static_cast<uint> (l._centroidPosition[1]);
+    const uint xCenter = static_cast<uint> (l._centroidPosition[0] * width);
+    const uint yCenter = static_cast<uint> (l._centroidPosition[1] * height) ;
 
     const uint m = width*height*nc;
-    for (int x = -1; x < 2; ++x)
-    {
-        ci = std::min((y0*width + x0 + x)*nc, m);
-        drawDebug(rgba, ci, nc);
-    }
 
-    ci = std::min<int>(((y0+1)*width + x0)*nc, m);
-    drawDebug(rgba, ci, nc);
+    // draw light center cross
+    uint pixelPos;
+    uint pixelCount;
 
-    ci = std::min<int>(((y0-1)*width + x0)*nc, m);
-    drawDebug(rgba, ci, nc);
+    const uint xLeft = l._x * width;
+    const uint widthPixel =  l._w * width;
+    const uint xRight = xLeft + widthPixel;
+
+    const uint yBottom = l._y * height;
+    const uint heightPixel = l._h * height;
+    const uint yTop = yBottom + heightPixel;
 
     // draw light area
-    uint pixelPos = (l._y*width + l._x)*nc;
-    for (int p = l._x; p < l._x+l._w && pixelPos < m; ++p){
+    // width lines
+    pixelCount = widthPixel;
+    // up
+    pixelPos = (yBottom*width + xLeft)*nc;
+    for (int p = 0; p < pixelCount && pixelPos < m; ++p){
         drawDebug(rgba, pixelPos, nc);
         pixelPos += nc;
     }
-    pixelPos = ((l._y+l._h)*width + l._x)*nc;
-    for (int p = l._x; p < l._x+l._w && pixelPos < m; ++p){
+
+    // bottom
+    pixelPos = (yTop*width + xLeft)*nc;
+    for (int p = 0; p < pixelCount && pixelPos < m; ++p){
         drawDebug(rgba, pixelPos, nc);
         pixelPos += nc;
     }
-    pixelPos = ((l._y)*width + l._x)*nc;
-    for (int i = l._y; i < l._y+l._h && pixelPos < m; ++i){
-         drawDebug(rgba, pixelPos, nc);
-         pixelPos += nc*width;
+    // center
+    pixelPos = (yCenter*width + xCenter - widthPixel*0.5)*nc;
+    for (int p = 0; p < pixelCount && pixelPos < m; ++p){
+        drawDebug(rgba, pixelPos, nc);
+        pixelPos += nc;
     }
-    pixelPos = ((l._y)*width + l._x+l._w)*nc;
-    for (int i = l._y; i < l._y+l._h && pixelPos < m; ++i){
+
+    // Height lines
+    pixelCount = heightPixel;
+    // left
+    pixelPos = (yBottom*width + xLeft)*nc;
+    for (int p = 0; p < pixelCount && pixelPos < m; ++p){
+        drawDebug(rgba, pixelPos, nc);
+        pixelPos += nc*width;
+    }
+    // right
+    pixelPos = (yBottom*width + xRight)*nc;
+    for (int p = 0; p < pixelCount && pixelPos < m; ++p){
+        drawDebug(rgba, pixelPos, nc);
+        pixelPos += nc*width;
+    }
+
+    // center
+
+    pixelCount = heightPixel*2.0;
+    pixelPos = ((yCenter)*width  + xCenter - (heightPixel*width))*nc;
+    for (int p = 0; p < pixelCount && pixelPos < m; ++p){
         drawDebug(rgba, pixelPos, nc);
         pixelPos += nc*width;
     }
@@ -101,11 +127,12 @@ void drawLight( uchar* rgba, int width, int height, const Light &l, const uint n
 
 
 
-void debugDrawLight(const SatRegionVector& regions, const LightVector &lights, const LightVector &mainLights, float * rgba, const uint width, const uint height, const uint nc)
+void debugDrawLight(const SatRegionVector& regions, const LightVector &lights, const LightVector &mainLights, float * rgba,
+                    const uint width, const uint height, const uint nc, const double maxLum, const double minLum, const int numLights)
 {
     assert(nc >= 3);
 
-    size_t lightNum = lights.size();
+    size_t lightNum = numLights > 0 ? numLights : lights.size();
     uint i = 0;
 
     // save image with marked samples
@@ -119,7 +146,7 @@ void debugDrawLight(const SatRegionVector& regions, const LightVector &lights, c
         const float g = rgba[i + 1];
         const float b = rgba[i + 2];
 
-        double ixy = luminance(r,g,b);
+        double ixy = (luminance(r,g,b)) ;
         const  uchar luminanceByte = static_cast<uchar> (ixy*255);
 
         if(nc>0) conv[i++] = luminanceByte;
@@ -136,14 +163,14 @@ void debugDrawLight(const SatRegionVector& regions, const LightVector &lights, c
     debugColorB = 0;
     debugColorA = 255;
 
-//     drawRegions(&conv[0], width, height, regions, nc);
+#ifdef _DRAW_REGIONS
+    drawRegions(&conv[0], width, height, regions, nc);
+#endif
 
 
-    // drawLights
-/*
+#ifdef DRAW_LIGHT_ABOVE_REGIONS
     // draw Light above regions
     i = 0;
-    lightNum = lights.size();
 
     debugColorR = 0;
     debugColorG = 255;
@@ -155,26 +182,9 @@ void debugDrawLight(const SatRegionVector& regions, const LightVector &lights, c
         drawLight(&conv[0], width, height, *l, nc);
         i++;
     }
-*/
-    lightNum = mainLights.size();
-    //lightNum = std::min(3, (int)lightNum);
-    //std::cout << "MAINLIGHTS " << lightNum;
+#endif
 
-    debugColorR = 0;
-    debugColorG = 0;
-    debugColorB = 255;
-    debugColorA = 255;
-
-    i = 0;
-    for (LightVector::const_iterator l = mainLights.begin(); l != mainLights.end() && i < lightNum; ++l) {
-        drawLight(&conv[0], width, height, *l, nc);
-        i++;
-    }
-
-
-    lightNum = mainLights.size();
-    lightNum = std::min(3, (int)lightNum);
-    //std::cout << "MAINLIGHTS " << lightNum;
+    const size_t mainLightNum = std::min(3, (int)lightNum);
 
     debugColorR = 255;
     debugColorG = 0;
@@ -182,9 +192,28 @@ void debugDrawLight(const SatRegionVector& regions, const LightVector &lights, c
     debugColorA = 255;
 
     i = 0;
-    for (LightVector::const_iterator l = mainLights.begin(); l != mainLights.end() && i < lightNum; ++l) {
+    for (LightVector::const_iterator l = mainLights.begin(); l != mainLights.end() && i < mainLightNum; ++l) {
+
+        if (l->_y >= 0.5) continue;
+
         drawLight(&conv[0], width, height, *l, nc);
         i++;
+
+    }
+
+    debugColorR = 0;
+    debugColorG = 0;
+    debugColorB = 255;
+    debugColorA = 255;
+    lightNum = mainLights.size();
+
+    for (LightVector::const_iterator l = mainLights.begin(); l != mainLights.end() && i < lightNum; ++l) {
+
+        if (l->_y >= 0.5) continue;
+
+        drawLight(&conv[0], width, height, *l, nc);
+        i++;
+
     }
 
     ImageOutput* out = ImageOutput::create ("out/test_variance.png");

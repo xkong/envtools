@@ -12,8 +12,8 @@ struct Light {
     Vec2d _centroidPosition;
 
     // light Area
-    int _w,_h;
-    int _x,_y;
+    double _w,_h;
+    double _x,_y;
 
     // if one values is out of bound
     // flag the light as error

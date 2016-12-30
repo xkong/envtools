@@ -46,6 +46,10 @@ public:
     {
         return _maxLum;        
     }
+    double getMinLum() const 
+    {
+        return _minLum;        
+    }
     
     double getSum() const 
     {

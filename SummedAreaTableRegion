@@ -232,7 +232,7 @@ public:
 
     Vec2d centroid() const
     {
-        return Vec2d( _x, _y ) + Vec2d( _w, _h) * 0.5;
+        return Vec2d( _x + _w*0.5, _y+_h*0.5 );
     }
 
     double areaSize() const
