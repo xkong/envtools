@@ -6,6 +6,7 @@ import time
 import math
 import json
 import argparse
+import shutil
 
 DEBUG = False
 
@@ -19,6 +20,7 @@ samplesGGX_cmd = "samplesGGX"
 extractLights_cmd = "extractLights"
 envBackground_cmd = "envBackground"
 compress_7Zip_cmd = "7z"
+compress_zip_cmd = "zip"
 
 python_dirname = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, python_dirname)
@@ -75,8 +77,13 @@ def which(program):
 class ProcessEnvironment(object):
 
     def __init__(self, input_file, output_directory, **kwargs):
-        self.encoding_type = ["luv", "rgbm", "rgbe", "float"]
+
+        encoding = kwargs.get("encoding","luv:rgbm:rgbe:float").split(":")
+        encoding = [ x for x in encoding if x in [ 'luv', 'rgbm', 'rgbe', 'float' ] ]
+
+        self.encoding_type = encoding
         self.input_file = os.path.abspath(input_file)
+        self.working_directory = '/tmp/' + os.path.basename(output_directory)
         self.output_directory = output_directory
         self.pretty = kwargs.get("pretty", False)
 
@@ -110,9 +117,12 @@ class ProcessEnvironment(object):
         self.mipmap_file_base = "mipmap_cubemap"
         self.mipmap_size = 1024
         self.mipmap_filename = None
-        self.can_compress = True if which(compress_7Zip_cmd) != None else False
 
-        self.export_mipmap_cubemap = True
+
+        self.can_zip = True if which(compress_zip_cmd) != None and kwargs.get("compress_zip", False) else False
+        self.can_compress = True if which(compress_7Zip_cmd) != None and self.can_zip == False else False
+
+        self.export_mipmap_cubemap = False
 
         self.config = {'textures': []}
         self.config['writeByChannel'] = self.write_by_channel
@@ -127,7 +137,7 @@ class ProcessEnvironment(object):
         self.lights = None
 
     def writeConfig(self):
-        filename = os.path.join(self.output_directory, "config.json")
+        filename = os.path.join(self.working_directory, "config.json")
         output = open(filename, "w")
 
         config = self.config
@@ -142,7 +152,7 @@ class ProcessEnvironment(object):
         for texture in self.config['textures']:
             for image in texture['images']:
                 f = image["file"]
-                image["file"] = os.path.relpath(f, self.output_directory)
+                image["file"] = os.path.relpath(f, self.working_directory)
 
         if self.pretty is True:
             json.dump(config, output, sort_keys=True, indent=4)
@@ -188,6 +198,13 @@ class ProcessEnvironment(object):
                 os.remove(f)
         print ""
 
+    def zip(self):
+        sys.stdout.write("zipping ")
+        zip_file= "{}/package.zip".format(self.working_directory)
+        cmd = "{} -r {} {}".format(compress_zip_cmd, zip_file, self.working_directory)
+        execute_command(cmd, verbose=False)
+        print ""
+
     def create_sample_GGX(self):
 
         size = self.mipmap_size
@@ -213,7 +230,7 @@ class ProcessEnvironment(object):
             index = line.find("shCoef:")
             if index != -1:
                 self.sh_coef = line[line.find(":") + 1:]
-                # with open( os.path.join(self.output_directory, "spherical"), "w") as f:
+                # with open( os.path.join(self.working_directory, "spherical"), "w") as f:
                 #     f.write(self.sh_coef)
                 # break
 
@@ -254,7 +271,7 @@ class ProcessEnvironment(object):
             execute_command(cmd)
 
         self.mipmap_pattern = "/tmp/specular_%d.tif"
-        file_basename = os.path.join(self.output_directory, self.mipmap_file_base)
+        file_basename = os.path.join(self.working_directory, self.mipmap_file_base)
         self.mipmap_filename = file_basename
 
     def register_mipmap_cubemap(self):
@@ -270,7 +287,7 @@ class ProcessEnvironment(object):
     def compute_brdf_lut_ue4(self):
         # create the integrateBRDF texture
         # we dont need to recreate it each time
-        outout_filename = os.path.join(self.output_directory, "brdf_ue4.bin")
+        outout_filename = os.path.join(self.working_directory, "brdf_ue4.bin")
         size = self.integrate_BRDF_size
         cmd = "{} -s {} -n {} {}".format(envIntegrateBRDF_cmd, size, self.brdf_nb_samples, outout_filename)
         execute_command(cmd)
@@ -348,7 +365,7 @@ class ProcessEnvironment(object):
                 input_filename, output_filename)
             execute_command(cmd)
 
-        file_basename = os.path.join(self.output_directory, "specular_panorama_ue4_{}".format(panorama_size))
+        file_basename = os.path.join(self.working_directory, "specular_panorama_ue4_{}".format(panorama_size))
 
         self.panorama_packer("/tmp/panorama_prefilter_specular_%d.tif", max_level - 1,
                              file_basename)
@@ -369,7 +386,7 @@ class ProcessEnvironment(object):
         self.process_cubemap_specular_create_prefilter(
             specular_size, prefilter_stop_size, True, "/tmp/prefilter_fixup")
 
-        file_basename = os.path.join(self.output_directory, "specular_cubemap_ue4_{}".format(specular_size))
+        file_basename = os.path.join(self.working_directory, "specular_cubemap_ue4_{}".format(specular_size))
         self.cubemap_packer(
             "/tmp/prefilter_fixup_%d.tif", max_level, ":".join(self.encoding_type), file_basename)
 
@@ -413,7 +430,7 @@ class ProcessEnvironment(object):
             execute_command(cmd)
 
         # packer use a pattern, fix cubemap packer ?
-        file_basename = os.path.join(self.output_directory, "{}_cubemap_{}_{}".format(
+        file_basename = os.path.join(self.working_directory, "{}_cubemap_{}_{}".format(
             self.background_file_base,
             background_size,
             background_blur))
@@ -433,7 +450,7 @@ class ProcessEnvironment(object):
     def thumbnail_create(self, thumbnail_size):
 
         # compute it one time for panorama
-        file_basename = os.path.join(self.output_directory, "thumbnail_{}.jpg".format(thumbnail_size))
+        file_basename = os.path.join(self.working_directory, "thumbnail_{}.jpg".format(thumbnail_size))
         cmd = "oiiotool {} --resize {}x{} --cpow 0.45454545,0.45454545,0.45454545,1.0 -o {}".format(
             self.panorama_highres, thumbnail_size, thumbnail_size / 2, file_basename)
         execute_command(cmd)
@@ -445,8 +462,8 @@ class ProcessEnvironment(object):
         })
 
     def initBaseTexture(self):
-        if not os.path.exists(self.output_directory):
-            os.makedirs(self.output_directory)
+        if not os.path.exists(self.working_directory):
+            os.makedirs(self.working_directory)
 
         original_file = "/tmp/original_panorama.tif"
 
@@ -464,7 +481,7 @@ class ProcessEnvironment(object):
         # compute it one time for panorama
         img_size_x = 1024
         img_size_y = 512
-        panorama_smaller = os.path.join(self.output_directory, "pano_small_{}.tif".format(img_size_x))
+        panorama_smaller = os.path.join(self.working_directory, "pano_small_{}.tif".format(img_size_x))
         cmd = "oiiotool {} --resize {}x{} -o {}".format(
             self.panorama_highres, img_size_x, img_size_y, panorama_smaller)
         execute_command(cmd, verbose=False, print_command=True)
@@ -477,6 +494,10 @@ class ProcessEnvironment(object):
     def run(self):
 
         start = time.time()
+
+        # clean up previous build
+        if os.path.exists(self.working_directory):
+            shutil.rmtree(self.working_directory)
 
         start_tick = time.time()
         self.initBaseTexture()
@@ -561,6 +582,30 @@ class ProcessEnvironment(object):
         # write config for this environment
         self.writeConfig()
 
+        if self.can_zip:
+            start_tick = time.time()
+            self.zip()
+            print "== {} zip ==".format((time.time() - start_tick))
+            print ""
+
+        # write working data into output directory
+        if self.can_zip:
+            output_file = os.path.basename(self.output_directory) + ".zip"
+            output_dir = os.path.dirname(self.output_directory)
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            source_file = "{}/package.zip".format(self.working_directory)
+            output_file = "{}/{}".format(output_dir, output_file)
+            shutil.move(source_file, output_file)
+            shutil.rmtree(self.working_directory)
+        else:
+            if not os.path.exists(self.output_directory):
+                os.makedirs(self.output_directory)
+            cmd = "mv {}/* {}".format(self.working_directory, self.output_directory)
+            execute_command(cmd, verbose=False)
+            shutil.rmtree(self.working_directory)
+
+
         print ("processed in {} seconds".format(time.time() - start))
 
 
@@ -576,6 +621,10 @@ def define_arguments():
                         help="nb samples to compute environment 1 to 65536", default=4096)
     parser.add_argument("--backgroundSamples", action="store", dest="background_samples",
                         help="nb samples to compute background 1 to 65536", default=4096)
+    parser.add_argument("--encoding", action="store", dest="encoding",
+                        help="string that contains different encoding output", default="luv:rgbm::rgbe:float")
+    parser.add_argument("--zip", action="store_true", dest="compress_zip",
+                        help="archive in a zip file")
     parser.add_argument("--specularSize", action="store", dest="specular_size",
                         help="cubemap size for prefiltered texture", default=256)
     parser.add_argument("--thumbnailSize", action="store", dest="thumbnail_size",
@@ -606,6 +655,8 @@ def create_process_instance(args):
                                  nb_samples=int(args.nb_samples),
                                  background_blur=float(args.background_blur),
                                  write_by_channel=args.write_by_channel,
+                                 compress_zip=args.compress_zip,
+                                 encoding=args.encoding,
                                  approximate_directional_lights=args.approximate_directional_lights,
                                  prefilter_stop_size=8,
                                  fixedge=args.fixedge,

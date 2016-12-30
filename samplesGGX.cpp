@@ -37,7 +37,8 @@ int main(int argc, char *argv[])
     for ( uint i = 1; i < nbSteps; i++ ) {
 
         float r = step * i;
-        float roughnessLinear = r; //pow(r,1.5);
+        float roughnessLinear = r*r;
+        std::cout << "precompute ggx for roughness " << roughnessLinear << std::endl;
         precomputedLightInLocalSpace( samples, roughnessLinear, mip0Size );
 
         ubyte* buffer = (ubyte*)getPrecomputedLightCache();
