@@ -83,7 +83,7 @@ class ProcessEnvironment(object):
 
         self.encoding_type = encoding
         self.input_file = os.path.abspath(input_file)
-        self.working_directory = '/tmp/' + os.path.basename(output_directory)
+        self.working_directory = '/tmp/' + os.path.basename(os.path.abspath(output_directory))
         self.output_directory = output_directory
         self.pretty = kwargs.get("pretty", False)
 
