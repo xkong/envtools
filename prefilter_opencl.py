@@ -21,7 +21,7 @@ class Prefilter:
 
     def __init__(self, input, **kwargs):
         self.ctx = cl.create_some_context()
-        self.queue = cl.CommandQueue(self.ctx, properties=cl.command_queue_properties.PROFILING_ENABLE)
+        self.queue = cl.CommandQueue(self.ctx) #, properties=cl.command_queue_properties.PROFILING_ENABLE)
         # platform = cl.get_platforms()[0]
         # device_list = platform.get_devices(cl.device_type.GPU)
         device = self.ctx.devices[0]
@@ -39,6 +39,7 @@ class Prefilter:
         # read in the OpenCL source file as a string
         python_dirname = os.path.dirname(os.path.realpath(__file__))
         f = open(os.path.join(python_dirname, filename), 'r')
+        print "using program {}".format(f)
         fstr = "".join(f.readlines())
 
         # inject dymanic argument
@@ -107,6 +108,8 @@ class Prefilter:
                                         "filename": filename,
                                         "d_cubemap": d_cubemap})
 
+        # self.d_bluenoise = self.d_create_image_bluenoise()
+
         self.d_cubemap_levels = cubemap_levels
         self.cubemap_levels = cubemap_levels_info
         self.original_cubemap_size = cubemap_levels_info[0]["size"]
@@ -119,111 +122,32 @@ class Prefilter:
         self.h_nol = numpy.zeros((num_samples), dtype=numpy.float32)
         self.h_current_light_index = numpy.zeros((1), dtype=numpy.uint32)
 
-        if sample_file:
-            print "reading samples from file {} with {} levels ".format(sample_file, nb_levels)
-            self.samples = []
-            f = open(sample_file, 'rb')
-            for i in range(nb_levels):
-                array = numpy.fromfile(f, dtype=cl_array.vec.float4, count=num_samples)
-                self.samples.append(array)
-        else:
-            self.d_precomputed_lightvector_write = cl.Buffer(self.ctx,
-                                                             cl.mem_flags.WRITE_ONLY,
-                                                             num_samples * 4 * 4)
+        print "reading samples from file {} with {} levels ".format(sample_file, nb_levels)
+        self.samples = []
+        f = open(sample_file, 'rb')
+        for i in range(nb_levels):
+            array = numpy.fromfile(f, dtype=cl_array.vec.float4, count=num_samples)
+            self.samples.append(array)
 
         self.d_precomputed_lightvector_read = cl.Buffer(self.ctx,
                                                         cl.mem_flags.READ_ONLY,
                                                         num_samples * 4 * 4)
 
-        self.d_current_light_index = cl.Buffer(
-            self.ctx,
-            cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR,
-            hostbuf=self.h_current_light_index)
-
-        self.d_nol = cl.Buffer(self.ctx,
-                               cl.mem_flags.WRITE_ONLY | cl.mem_flags.COPY_HOST_PTR,
-                               hostbuf=self.h_nol)
-
     def get_sequence(self, level, roughness_linear, num_samples):
 
         # predefined samples from file
-        if len(self.samples):
-            self.h_precomputed_light = self.samples[level-1]
-            sum_weight = 0.0
-            for i in self.h_precomputed_light:
-                sum_weight += i[2]
-
-            return {
-                'sum': sum_weight,
-                'tries': 1,
-                'sequence': num_samples
-            }
-
-        try_sequence = num_samples
-        h_precomputed_lightvector = self.h_precomputed_light
-
-        h_nol = self.h_nol
-        d_nol = self.d_nol
-
-        d_current_light_index = self.d_current_light_index
-        h_current_light_index = self.h_current_light_index
-
-        nb_try = 0
-        while True:
-            nb_try += 1
-
-            # reset the buffers
-            h_current_light_index.fill(0)
-            cl.enqueue_copy(self.queue,
-                            d_current_light_index,
-                            h_current_light_index)
-
-            h_nol.fill(0.0)
-            cl.enqueue_copy(self.queue,
-                            d_nol,
-                            h_nol).wait()
-
-            # create an image to get the result
-            # it should be full mipmap chain
-            event = self.program.computeLightVector(self.queue,
-                                                    (try_sequence,),
-                                                    None,
-                                                    self.d_precomputed_lightvector_write,
-                                                    d_nol,
-                                                    d_current_light_index,
-                                                    numpy.uint32(try_sequence),
-                                                    numpy.uint32(num_samples),
-                                                    numpy.uint32(self.original_cubemap_size),
-                                                    numpy.float32(roughness_linear))
-
-            cl.enqueue_copy(self.queue, h_current_light_index, d_current_light_index).wait()
-            nb_valid_samples = h_current_light_index[0]
-            # print "computeLightVector duration {} valids {} / {}".format(
-            #     1e-9*(event.profile.end - event.profile.start), nb_valid_samples, try_sequence)
-            if nb_valid_samples != num_samples:
-                try_sequence += num_samples - nb_valid_samples
-                continue
-
-            break
-
-        cl.enqueue_copy(self.queue,
-                        h_precomputed_lightvector,
-                        self.d_precomputed_lightvector_write).wait()
-        # for i in h_precomputed_lightvector:
-        #     print i[0], i[1], i[2], i[3]
-
-        cl.enqueue_copy(self.queue, h_nol, d_nol).wait()
-
-        sum_weight = numpy.add.reduce(h_nol.astype(numpy.double))
-        # print "compute sequence in {} tries with {} sequence".format(nb_try, try_sequence)
+        self.h_precomputed_light = self.samples[level-1]
+        sum_weight = 0.0
+        for i in self.h_precomputed_light:
+            sum_weight += i[2]
 
         return {
             'sum': sum_weight,
-            'tries': nb_try,
-            'sequence': try_sequence
+            'tries': 1,
+            'sequence': num_samples
         }
 
-    def compute_level(self, level, size, roughness_linear, filename, num_samples, fix_edge):
+    def compute_level(self, level, size, roughness_linear, sample_rotation, filename, num_samples, fix_edge):
 
         start_tick = time.time()
 
@@ -273,11 +197,12 @@ class Prefilter:
             event = self.program.computeGGX(self.queue,
                                             (size, size),
                                             None,
-                                            numpy.uint32(face),
+                                            numpy.uint32(face), #self.d_bluenoise,
                                             d_face_result,
                                             self.d_precomputed_lightvector_read,
                                             numpy.float32(total_weight),
                                             numpy.uint32(num_light_vector),
+                                            numpy.uint32(sample_rotation),
                                             numpy.uint32(1 if fix_edge else 0),
                                             *self.d_cubemap_levels)
             cl.enqueue_copy(self.queue,
@@ -351,6 +276,8 @@ class Prefilter:
 
         start_tick = time.time()
 
+        sample_rotation = kwargs.get("sample_rotation", 1)
+
         cm_levels = self.cubemap_levels
         level = [f for f in cm_levels if f["size"] == size]
         d_cubemap_with_same_output_size = level[0]["d_cubemap"] if level else cm_levels[0]["d_cubemap"]
@@ -393,6 +320,7 @@ class Prefilter:
                                                    d_tap_vector,
                                                    numpy.float32(total_weight),
                                                    numpy.uint32(num_samples),
+                                                   numpy.uint32(sample_rotation),
                                                    numpy.uint32(1 if kwargs.get("fix_edge") else 0),
                                                    d_cubemap_with_same_output_size)
             cl.enqueue_copy(self.queue,
@@ -437,7 +365,7 @@ class Prefilter:
             end_mipmap + 1, compute_start_size, compute_start_size, limit_size, limit_size)
 
         pattern_output = "{}_{}.tif"
-
+        sample_rotation = kwargs.get("sample_rotation", 1)
         start_mipmap = 0
         # roughness 0 is a simple copy if found in mipmap files
         if filename_image_roughness0:
@@ -463,7 +391,7 @@ class Prefilter:
             if i <= end_mipmap:
                 print "compute level {} with roughness {} {} x {} to {}".format(
                     i, roughness_linear, size, size, filename)
-                self.compute_level(i, size, roughness_linear, filename, num_samples, kwargs.get("fix_edge"))
+                self.compute_level(i, size, roughness_linear, sample_rotation, filename, num_samples, kwargs.get("fix_edge"))
             else:
                 # write dummy cubemap
                 face = numpy.empty((size, size), dtype=cl_array.vec.float4)
@@ -487,6 +415,18 @@ class Prefilter:
                          added_array,
                          True)
         return image
+
+    # def d_create_image_bluenoise(self):
+    #     """ create an blue noise image """
+    #     filename = "LDR_RGBA_0.png"
+    #     (image_bluenoise, size ) = read_image_bluenoise(filename)
+    #     image = cl.Image(self.ctx,
+    #                      cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+    #                      cl.ImageFormat(cl.channel_order.RGBA, cl.channel_type.UNSIGNED_INT8),
+    #                      (size, size),
+    #                      None,
+    #                      image_bluenoise)
+    #     return image
 
 
 def write_image_cubemap(cubemap, filename):
@@ -521,6 +461,12 @@ def write_image(image, filename):
     output.write_image(oiio.FLOAT, numpy.getbuffer(image))
     output.close()
 
+# def read_image_bluenoise(filename):
+#     buf = oiio.ImageBuf(filename)
+#     size = buf.spec().width
+#     pixels = buf.get_pixels(oiio.UINT8)
+#     image = numpy.frombuffer(numpy.getbuffer(numpy.uint8(pixels)), dtype=cl_array.vec.uchar4)
+#     return (image,size)
 
 def read_image_cubemap(filename):
     image_array = []

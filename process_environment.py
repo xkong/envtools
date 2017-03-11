@@ -109,6 +109,10 @@ class ProcessEnvironment(object):
         self.brdf_file = "brdf_ue4.bin"
         self.brdf_nb_samples = 4096
 
+        self.cubemap_only = kwargs.get("cubemap_only", False)
+
+        self.sample_rotation = kwargs.get("sample_rotation", 1)
+
         self.background_size = kwargs.get("background_size", 256)
         self.background_blur = kwargs.get("background_blur", 0.1)
         self.background_file_base = "background"
@@ -259,6 +263,7 @@ class ProcessEnvironment(object):
 
         max_level = self.getMaxLevel(cubemap_size)
         previous_file = self.cubemap_highres
+        self.mipmap_files = []
 
         for i in range(0, max_level + 1):
             size = int(math.pow(2, max_level - i))
@@ -266,7 +271,7 @@ class ProcessEnvironment(object):
             cmd = "{} -p {} -n {} -i cube -o cube {} {}".format(
                 envremap_cmd, self.pattern_filter, size,
                 previous_file, outout_filename)
-
+            self.mipmap_files.append({ "size": size, "filename": outout_filename })
             previous_file = outout_filename
             execute_command(cmd)
 
@@ -329,14 +334,15 @@ class ProcessEnvironment(object):
             self.prefilterGPU.run_ggx(output_filename,
                                       size=specular_size,
                                       num_samples=self.nb_samples,
+                                      sample_rotation=self.sample_rotation,
                                       fix_edge=fixedge,
                                       limit_size=prefilter_stop_size,
                                       sample_file=self.sample_file)
         else:
             print "executing cpu prefiltering"
-            cmd = "{} -s {} -e {} -n {} {} {} {}".format(
+            cmd = "{} -s {} -e {} -n {} -r {} {} {} {}".format(
                 envPrefilter_cmd, specular_size, prefilter_stop_size,
-                self.nb_samples, fix_flag, self.mipmap_pattern,
+                self.nb_samples, self.sample_rotation, fix_flag, self.mipmap_pattern,
                 output_filename)
             execute_command(cmd)
 
@@ -402,7 +408,8 @@ class ProcessEnvironment(object):
 
     def specular_create_prefilter(self, specular_size, prefilter_stop_size):
 
-        self.specular_create_prefilter_panorama(specular_size, prefilter_stop_size)
+        if not self.cubemap_only:
+            self.specular_create_prefilter_panorama(specular_size, prefilter_stop_size)
         self.specular_create_prefilter_cubemap(specular_size, prefilter_stop_size)
 
     def background_create(self, background_size, background_blur, background_samples=None):
@@ -417,14 +424,19 @@ class ProcessEnvironment(object):
             self.prefilterGPU.run_background_blur(output_filename,
                                                   size=background_size,
                                                   num_samples=samples,
+                                                  sample_rotation=self.sample_rotation,
                                                   fix_edge=self.fixedge,
                                                   radius=background_blur)
         else:
             # compute it one time for panorama
             fixedge = "-f" if self.fixedge else ""
-            cmd = "{} -s {} -n {} -r {} {} {} {}".format(
+
+            level = [f for f in self.mipmap_files if f["size"] == background_size]
+            background_input_mipmap_file = level[0]["filename"] if level else self.mipmap_files[0]["filename"]
+
+            cmd = "{} -s {} -n {} -b {} -r {} {} {} {}".format(
                 envBackground_cmd, background_size, samples,
-                background_blur, fixedge, self.cubemap_highres,
+                background_blur, self.sample_rotation, fixedge, background_input_mipmap_file,
                 output_filename)
 
             execute_command(cmd)
@@ -613,10 +625,14 @@ def define_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("file", help="hdr environment [ .hdr .tif .exr ]")
     parser.add_argument("output", help="output directory")
+    parser.add_argument("--cubemap-only", action="store_true", dest="cubemap_only",
+                        help="generate only cubemap target, no panorama")
     parser.add_argument("--force-cpu", action="store_true", dest="force_cpu",
                         help="force to compute en cpu, no gpu usage")
     parser.add_argument("--write-by-channel", action="store_true", dest="write_by_channel",
                         help="write by channel all red then green then blue ...")
+    parser.add_argument("--sample-rotation", action="store", dest="sample_rotation",
+                        help="nb of samples rotations", default=1)
     parser.add_argument("--nbSamples", action="store", dest="nb_samples",
                         help="nb samples to compute environment 1 to 65536", default=4096)
     parser.add_argument("--backgroundSamples", action="store", dest="background_samples",
@@ -656,11 +672,13 @@ def create_process_instance(args):
                                  background_blur=float(args.background_blur),
                                  write_by_channel=args.write_by_channel,
                                  compress_zip=args.compress_zip,
+                                 sample_rotation=args.sample_rotation,
                                  encoding=args.encoding,
                                  approximate_directional_lights=args.approximate_directional_lights,
                                  prefilter_stop_size=8,
                                  fixedge=args.fixedge,
                                  pretty=args.pretty,
+                                 cubemap_only=args.cubemap_only,
                                  force_cpu=args.force_cpu)
     return process
 
