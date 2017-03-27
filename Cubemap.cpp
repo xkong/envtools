@@ -8,6 +8,7 @@
 #include "Cubemap"
 
 #include <tbb/parallel_for.h>
+//#include <tbb/task_scheduler_init.h>
 
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/filter.h>
@@ -515,7 +516,7 @@ bool Cubemap::loadMipMap(const std::string& filenamePattern)
     return true;
 }
 
-void Cubemap::computePrefilteredEnvironmentUE4( const std::string& output, int startSize, int endSize, uint nbSamples, const bool fixup ) {
+void Cubemap::computePrefilteredEnvironmentUE4( const std::string& output, int startSize, int endSize, uint nbSamples, uint numRotations, const bool fixup ) {
 
     int computeStartSize = startSize;
     if (!computeStartSize)
@@ -559,7 +560,7 @@ void Cubemap::computePrefilteredEnvironmentUE4( const std::string& output, int s
         // generate debug color cubemap after limit size
         if ( i <= endMipMap ) {
             std::cout << "compute level " << i << " with roughness " << roughnessLinear << " " << size << " x " << size << " to " << ss.str() << std::endl;
-            cubemap.computePrefilterCubemapAtLevel( roughnessLinear, *this, nbSamples, fixup);
+            cubemap.computePrefilterCubemapAtLevel( roughnessLinear, *this, nbSamples, numRotations, fixup);
         } else {
             cubemap.fill(Vec4f(1.0,0.0,1.0,1.0));
         }
@@ -567,7 +568,7 @@ void Cubemap::computePrefilteredEnvironmentUE4( const std::string& output, int s
     }
 }
 
-void Cubemap::computePrefilterCubemapAtLevel( float roughnessLinear, const Cubemap& inputCubemap, uint nbSamples, bool fixup ) {
+void Cubemap::computePrefilterCubemapAtLevel( float roughnessLinear, const Cubemap& inputCubemap, uint nbSamples, uint numRotations, bool fixup ) {
 
     roughnessLinear = clampTo(roughnessLinear, 0.0f, 1.0f);
 
@@ -576,12 +577,12 @@ void Cubemap::computePrefilterCubemapAtLevel( float roughnessLinear, const Cubem
 
     precomputedLightInLocalSpace( nbSamples, roughnessLinear, inputCubemap.getSize() );
 
-    iterateOnFace(0, roughnessLinear, inputCubemap, nbSamples, fixup);
-    iterateOnFace(1, roughnessLinear, inputCubemap, nbSamples, fixup);
-    iterateOnFace(2, roughnessLinear, inputCubemap, nbSamples, fixup);
-    iterateOnFace(3, roughnessLinear, inputCubemap, nbSamples, fixup);
-    iterateOnFace(4, roughnessLinear, inputCubemap, nbSamples, fixup);
-    iterateOnFace(5, roughnessLinear, inputCubemap, nbSamples, fixup);
+    iterateOnFace(0, roughnessLinear, inputCubemap, nbSamples, numRotations, fixup);
+    iterateOnFace(1, roughnessLinear, inputCubemap, nbSamples, numRotations, fixup);
+    iterateOnFace(2, roughnessLinear, inputCubemap, nbSamples, numRotations, fixup);
+    iterateOnFace(3, roughnessLinear, inputCubemap, nbSamples, numRotations, fixup);
+    iterateOnFace(4, roughnessLinear, inputCubemap, nbSamples, numRotations, fixup);
+    iterateOnFace(5, roughnessLinear, inputCubemap, nbSamples, numRotations, fixup);
 }
 
 
@@ -636,19 +637,19 @@ void Cubemap::iterateOnFace( uint face, float roughnessLinear, const Cubemap& cu
 
 
 struct Prefilter {
-    static void inline pixelOperator(const Cubemap& cubemap, uint nbSamples, uint nativeResolution, const Vec3f& direction, Vec3f& result ) {
-        result = cubemap.prefilterEnvMapUE4( direction, nbSamples );
+  static void inline pixelOperator(const Cubemap& cubemap, uint nbSamples, uint numRotations, uint nativeResolution, const Vec3f& direction, Vec3f& result ) {
+    result = cubemap.prefilterEnvMapUE4( direction, nbSamples, numRotations );
     }
 };
 
 struct Background {
-    static void inline pixelOperator(const Cubemap& cubemap, uint nbSamples, uint nativeResolution, const Vec3f& direction, Vec3f& result ) {
-        result = cubemap.averageEnvMap( direction, nbSamples );
+  static void inline pixelOperator(const Cubemap& cubemap, uint nbSamples, uint numRotations, uint nativeResolution, const Vec3f& direction, Vec3f& result ) {
+      result = cubemap.averageEnvMap( direction, nbSamples, numRotations );
     }
 };
 
 struct Copy {
-    static void inline pixelOperator(const Cubemap& cubemap, uint nbSamples, uint nativeResolution, const Vec3f& direction, Vec3f& result ) {
+  static void inline pixelOperator(const Cubemap& cubemap, uint nbSamples, uint numRotations, uint nativeResolution, const Vec3f& direction, Vec3f& result ) {
         cubemap.getImages(nativeResolution).getSample( direction, result);
     }
 };
@@ -658,11 +659,12 @@ struct Worker {
     uint _samplePerPixel, _size, _face, _fixup;
     float _roughnessLinear;
     uint _nbSamples;
+    uint _numRotations;
     const Cubemap& _cubemap;
     uint _nativeResolution;
     float* _dataFace;
 
-    Worker(uint samplePerPixel, uint size, uint face, bool fixup, float roughnessLinear, uint nbSamples, const Cubemap& cubemap, uint nativeResolution, float* dataFace): _samplePerPixel(samplePerPixel),_size(size), _face(face), _fixup(fixup ? 1 : 0), _roughnessLinear(roughnessLinear), _nbSamples(nbSamples), _cubemap(cubemap), _nativeResolution(nativeResolution), _dataFace(dataFace)
+  Worker(uint samplePerPixel, uint size, uint face, bool fixup, float roughnessLinear, uint nbSamples, uint numRotations, const Cubemap& cubemap, uint nativeResolution, float* dataFace): _samplePerPixel(samplePerPixel),_size(size), _face(face), _fixup(fixup ? 1 : 0), _roughnessLinear(roughnessLinear), _nbSamples(nbSamples), _numRotations(numRotations), _cubemap(cubemap), _nativeResolution(nativeResolution), _dataFace(dataFace)
     {
     }
 
@@ -679,7 +681,7 @@ struct Worker {
 
                 texelCoordToVectCubeMap( _face, float(i), float(j), _size, &direction[0], _fixup );
 
-                T::pixelOperator(_cubemap, _nbSamples, _nativeResolution, direction, resultColor);
+                T::pixelOperator(_cubemap, _nbSamples, _numRotations, _nativeResolution, direction, resultColor);
 
                 _dataFace[ index     ] = resultColor[0];
                 _dataFace[ index + 1 ] = resultColor[1];
@@ -710,7 +712,7 @@ struct Worker {
 //     }
 // };
 
-void Cubemap::iterateOnFace( uint face, float roughnessLinear, const Cubemap& cubemap, uint nbSamples, bool fixup, bool backgroundAverage ) {
+void Cubemap::iterateOnFace( uint face, float roughnessLinear, const Cubemap& cubemap, uint nbSamples, uint numRotations, bool fixup, bool backgroundAverage ) {
 
     // find native resolution to copy pixel
     uint size = getSize();
@@ -724,19 +726,33 @@ void Cubemap::iterateOnFace( uint face, float roughnessLinear, const Cubemap& cu
     float* dataFace = getImages().imageFace(face);
 
     if ( roughnessLinear == 0.0 || nbSamples ==1 ) {
-        parallel_for(tbb::blocked_range<uint>(0, size), Worker<Copy>(getSamplePerPixel(), size, face, fixup, 0.0, 1, cubemap, nativeResolution, dataFace) );
+       parallel_for(tbb::blocked_range<uint>(0, size), Worker<Copy>(getSamplePerPixel(), size, face, fixup, 0.0, 1, 1, cubemap, nativeResolution, dataFace) );
     } else {
         if ( backgroundAverage )
-            parallel_for(tbb::blocked_range<uint>(0, size), Worker<Background>(getSamplePerPixel(), size, face, fixup, roughnessLinear, nbSamples, cubemap, nativeResolution, dataFace) );
+          parallel_for(tbb::blocked_range<uint>(0, size), Worker<Background>(getSamplePerPixel(), size, face, fixup, roughnessLinear, nbSamples, numRotations, cubemap, nativeResolution, dataFace) );
         else
-            parallel_for(tbb::blocked_range<uint>(0, size), Worker<Prefilter>(getSamplePerPixel(), size, face, fixup, roughnessLinear, nbSamples, cubemap, nativeResolution, dataFace) );
+          parallel_for(tbb::blocked_range<uint>(0, size), Worker<Prefilter>(getSamplePerPixel(), size, face, fixup, roughnessLinear, nbSamples, numRotations, cubemap, nativeResolution, dataFace) );
     }
 }
 
 #endif
 
+inline Vec3f rotateDirection(float angle, const Vec3f& l )
+{
+  float s,c,t;
 
-void Cubemap::computeBackground( const std::string& output, int startSize, uint nbSamples, float radius , const bool fixup ) {
+  s = sin(angle);
+  c = cos(angle);
+  t = 1.f - c;
+
+  Vec3f L;
+  L[0] =  l[0] * c  +  l[1] * s;
+  L[1] = -l[0] * s  +  l[1] * c;
+  L[2] =  l[2] * ( t+ c );
+  return L;
+}
+
+void Cubemap::computeBackground( const std::string& output, int startSize, uint nbSamples, uint numRotations, float radius , const bool fixup ) {
 
     int computeStartSize = startSize;
     if (!computeStartSize)
@@ -758,25 +774,28 @@ void Cubemap::computeBackground( const std::string& output, int startSize, uint 
     float sigma = radius/3.0; // 3*sigma rules
     float sigmaSqr = sigma * sigma;
 
+    // tbb::task_scheduler_init init(1);
+
     precomputeUniformSampleOnCone( nbSamples, radius, sigmaSqr );
 
-    cubemap.iterateOnFace(0, radius, *this, nbSamples, fixup, true);
-    cubemap.iterateOnFace(1, radius, *this, nbSamples, fixup, true);
-    cubemap.iterateOnFace(2, radius, *this, nbSamples, fixup, true);
-    cubemap.iterateOnFace(3, radius, *this, nbSamples, fixup, true);
-    cubemap.iterateOnFace(4, radius, *this, nbSamples, fixup, true);
-    cubemap.iterateOnFace(5, radius, *this, nbSamples, fixup, true);
+    cubemap.iterateOnFace(0, radius, *this, nbSamples, numRotations, fixup, true);
+    cubemap.iterateOnFace(1, radius, *this, nbSamples, numRotations, fixup, true);
+    cubemap.iterateOnFace(2, radius, *this, nbSamples, numRotations, fixup, true);
+    cubemap.iterateOnFace(3, radius, *this, nbSamples, numRotations, fixup, true);
+    cubemap.iterateOnFace(4, radius, *this, nbSamples, numRotations, fixup, true);
+    cubemap.iterateOnFace(5, radius, *this, nbSamples, numRotations, fixup, true);
 
     cubemap.write( output.c_str() );
 }
 
-Vec3f Cubemap::prefilterEnvMapUE4( const Vec3f& R, const uint numSamples ) const
+Vec3f Cubemap::prefilterEnvMapUE4( const Vec3f& R, const uint numSamples, const uint numRotations ) const
 {
 
     Vec3f N = R;
 
     Vec3d prefilteredColor = Vec3d(0,0,0);
     Vec3f color;
+    Vec3f colorSample;
 
     Vec3f UpVector = fabs(N[2]) < 0.999 ? Vec3f(0,0,1) : Vec3f(1,0,0);
     Vec3f TangentX = normalize( cross( UpVector, N ) );
@@ -784,24 +803,47 @@ Vec3f Cubemap::prefilterEnvMapUE4( const Vec3f& R, const uint numSamples ) const
 
     bool useLod = _levels.size() > 1;
 
+
+    float rad = 2.0*PI / float(numRotations);
+    // offset rotation to avoid sampling pattern
+    float gi = (float)(fabs(N[2] + N[0])*256.0);
+    float offset = rad * ( cos( fmod(gi * 0.5f, 2.0f*PI ) ) * 0.5f + 0.5f );
+
     // see getPrecomputedLightInLocalSpace in Math
     // and https://placeholderart.wordpress.com/2015/07/28/implementation-notes-runtime-environment-map-filtering-for-image-based-lighting/
     // for the simplification
 
     Vec3f LworldSpace;
+
     if (useLod) {
 
         // optimized lod version
         for( uint i = 0; i < numSamples; i++ ) {
             // vec4 contains the light vector + miplevel
             const Vec4f& L = getPrecomputedLightInLocalSpace( i );
+            const Vec3f& LDir = Vec3f(L[0],L[1],L[2]);
+            colorSample = Vec3f(0,0,0);
+
             float precomputedLod = L[3];
             float NoL = L[2];
             LworldSpace = TangentX * L[0] + TangentY * L[1] + N * L[2];
 
             getSampleLOD( precomputedLod, LworldSpace, color );
 
-            prefilteredColor += Vec3d( color * NoL );
+            colorSample += color;
+
+            for ( uint rotation = 1; rotation < numRotations; rotation++ ) {
+
+              Vec3f L2 = rotateDirection( offset + rotation*rad, LDir );
+
+              LworldSpace = TangentX * L2[0] + TangentY * L2[1] + N * L2[2];
+              getSampleLOD( precomputedLod, LworldSpace, color );
+              colorSample += color;
+
+            }
+
+            prefilteredColor += Vec3d(colorSample  * NoL);
+
         }
 
     } else {
@@ -810,43 +852,78 @@ Vec3f Cubemap::prefilterEnvMapUE4( const Vec3f& R, const uint numSamples ) const
         for( uint i = 0; i < numSamples; i++ ) {
             // vec4 contains the light vector + miplevel
             const Vec4f& L = getPrecomputedLightInLocalSpace( i );
+            const Vec3f& LDir = Vec3f(L[0],L[1],L[2]);
             float NoL = L[2];
+            colorSample = Vec3f(0,0,0);
             LworldSpace = TangentX * L[0] + TangentY * L[1] + N * L[2];
 
             getSample( LworldSpace, color );
 
-            prefilteredColor += Vec3d( color * NoL );
+            colorSample += color;
+
+            for ( uint rotation = 1; rotation < numRotations; rotation++ ) {
+
+              Vec3f L2 = rotateDirection( offset + rotation*rad, LDir );
+
+              LworldSpace = TangentX * L2[0] + TangentY * L2[1] + N * L2[2];
+              getSample( LworldSpace, color );
+              colorSample += color;
+
+            }
+
+            prefilteredColor += Vec3d(colorSample  * NoL);
+
         }
     }
 
-    return prefilteredColor / getPrecomputedLightTotalWeight();
+    return prefilteredColor / ( getPrecomputedLightTotalWeight() * numRotations );
 }
 
 
 // same but do a average to compute the background blur
-Vec3f Cubemap::averageEnvMap( const Vec3f& R, const uint numSamples ) const {
+Vec3f Cubemap::averageEnvMap( const Vec3f& R, const uint numSamples, const uint numRotations ) const {
 
     Vec3f N = R;
     Vec3d prefilteredColor = Vec3d(0,0,0);
-    Vec3f color,direction;
+    Vec3f color, colorSample, direction;
 
     Vec3f UpVector = fabs(N[2]) < 0.999 ? Vec3f(0,0,1) : Vec3f(1,0,0);
     Vec3f TangentX = normalize( cross( UpVector, N ) );
     Vec3f TangentY = normalize( cross( N, TangentX ) );
 
+    float rad = 2.0*PI / float(numRotations);
+    // offset rotation to avoid sampling pattern
+    float gi = (float)(fabs(N[2] + N[0])*256);
+    float offset = rad * ( cos( fmod(gi * 0.5f, 2.0f*PI ) ) * 0.5f + 0.5f );
+    offset = 0.0;
+    //std::cout << rad << std::endl;
+
     for( uint i = 0; i < numSamples; i++ ) {
 
         // vec4 contains direction and weight
         const Vec4f& H =  getUniformSampleOnCone( i );
+        const Vec3f& HDir = Vec3f(H[0], H[1], H[2]);
+        colorSample = Vec3f(0,0,0);
 
         // localspace to world space
         direction = TangentX * H[0] + TangentY * H[1] + N * H[2];
-
         getSample( direction, color );
-        prefilteredColor += color * H[3];
+        colorSample += color;
+
+        for ( uint rotation = 1; rotation < numRotations; rotation++ ) {
+          float angle = offset + rotation*rad;
+          Vec3f H2 = rotateDirection( angle, HDir );
+          //std::cout << "rotation " << rotation << " " << angle  << " [ " << H2[0] << ", " << H2[1] << ", " << H2[2] << " ] end"<< std::endl;
+          direction = TangentX * H2[0] + TangentY * H2[1] + N * H2[2];
+          getSample( direction, color );
+          colorSample += color;
+
+        }
+
+        prefilteredColor += colorSample * H[3];
     }
 
-    return prefilteredColor / getUniformSampleOnConeWeightSum();
+    return prefilteredColor / (getUniformSampleOnConeWeightSum() * numRotations );
 }
 
 
@@ -898,29 +975,40 @@ void Cubemap::MipLevel::getSample(const Vec3f& direction, Vec3f& color ) const {
     int faceIndex;
 
     int size = getSize();
+    // u and v in pixels
     vectToTexelCoordCubeMap(direction, size, u,v, faceIndex);
 
 
     const float ii = clamp(u - 0.5f, 0.0f, size - 1.0f);
     const float jj = clamp(v - 0.5f, 0.0f, size - 1.0f);
 
-    // const long  i0 = lrintf(ii);
-    // const long  j0 = lrintf(jj);
-
+#if 1
     const long  i0 = lrintf(u);
     const long  j0 = lrintf(v);
-
-
-    // for ( int i = 0; i < 3; i++ )
-    //     color[i] = lerp( lerp( _images[ faceIndex ][ ( j0 * size + i0 ) * getSamplePerPixel() + i  ],
-    //                             _images[ faceIndex ][ ( j0 * size + i1 ) * getSamplePerPixel() + i  ], di ),
-    //                       lerp( _images[ faceIndex ][ ( j1 * size + i0 ) * getSamplePerPixel() + i  ],
-    //                             _images[ faceIndex ][ ( j1 * size + i1 ) * getSamplePerPixel() + i  ], di ), dj );
 
     color[0] = _images[ faceIndex ][ ( j0 * size + i0 ) * getSamplePerPixel()     ];
     color[1] = _images[ faceIndex ][ ( j0 * size + i0 ) * getSamplePerPixel() + 1 ];
     color[2] = _images[ faceIndex ][ ( j0 * size + i0 ) * getSamplePerPixel() + 2 ];
 
+#else
+    // there is no bilinear in because of corner, so keep nearest
+    const long  i0 = long(floorf( u ));
+    const long  i1 = i0 + 1;
+
+    const long  j0 = long(floorf( v ));
+    const long  j1 = j0 + 1;
+
+    const float di = u - float(i0);
+    const float dj = v - float(j0);
+
+    for ( int i = 0; i < 3; i++ ) {
+        color[i] = lerp( lerp( _images[ faceIndex ][ ( j0 * size + i0 ) * getSamplePerPixel() + i  ],
+                                _images[ faceIndex ][ ( j0 * size + i1 ) * getSamplePerPixel() + i  ], di ),
+                          lerp( _images[ faceIndex ][ ( j1 * size + i0 ) * getSamplePerPixel() + i  ],
+                                _images[ faceIndex ][ ( j1 * size + i1 ) * getSamplePerPixel() + i  ], di ), dj );
+    }
+
+#endif
 
     //std::cout << "face " << index << " color " << r << " " << g << " " << b << std::endl;
 }

@@ -7,7 +7,7 @@
 
 static int usage(const std::string& name)
 {
-    std::cerr << "Usage: " << name << " [-s size] [-e stopSize] [-n nbsamples] [-f fixup flag ] in.tif out.tif" << std::endl;
+    std::cerr << "Usage: " << name << " [-s size] [-e stopSize] [-n nbsamples] [-r numRotations] [-f fixup flag ] in.tif out.tif" << std::endl;
     return 1;
 }
 
@@ -18,13 +18,15 @@ int main(int argc, char *argv[])
     int c;
     int endSize = 1;
     int samples = 1024;
+    int numRotations = 18;
     int fixup = 0;
 
-    while ((c = getopt(argc, argv, "s:e:n:f")) != -1)
+    while ((c = getopt(argc, argv, "s:r:e:n:f")) != -1)
         switch (c)
         {
         case 's': size = atoi(optarg);       break;
         case 'e': endSize = atoi(optarg);  break;
+        case 'r': numRotations = atoi(optarg);  break;
         case 'n': samples = atoi(optarg);  break;
         case 'f': fixup = 1;  break;
 
@@ -46,7 +48,7 @@ int main(int argc, char *argv[])
         else
             image.load(input);
 
-        image.computePrefilteredEnvironmentUE4( output, size, endSize, samples, fixup );
+        image.computePrefilteredEnvironmentUE4( output, size, endSize, samples, numRotations, fixup );
 
     } else {
         return usage( argv[0] );
