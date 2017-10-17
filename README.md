@@ -28,15 +28,11 @@ You can get some environment from http://hdrmaps.com/freebies to test the tools
 This code supports reprojection and resampling between any two of the following spherical image projections. A high-resolution example image of each type is included.
 
 <table>
-    <tr><td><img src="etc/thumbnail-rect.png"></td><td>The <b>rect</b> type corresponds to the equirectangular projection, much like the common map of the world. It represents the full sphere, though with significant distortion near the poles. (<a href="etc/rect.tif">Example</a>.)</td></tr>
-
-    <tr><td><img src="etc/thumbnail-ball.png"></td><td>The <b>ball</b> type corresponds to a photograph of a mirrored sphere, or "light probe". It represents the full sphere, but with significant distortion toward the back. (<a href="etc/ball.tif">Example</a>.)</td></tr>
-
-    <tr><td><img src="etc/thumbnail-dome.png"></td><td>The <b>dome</b> type gives a "dome master". This is an image suitable for projection onto a fulldome planetarium. The view looks up and the radius varies linearly with latitude. It represents only half of the sphere. (<a href="etc/dome.tif">Example</a>.)</td></tr>
-
-    <tr><td><img src="etc/thumbnail-hemi.png"></td><td>The <b>hemi</b> type is mathematically identical to the dome type, though the view faces forward instead of up. This corresponds to a photograph taken with an 8mm "fisheye" lens. This too represents only half of the sphere. (<a href="etc/hemi.tif">Example</a>.)</td></tr>
-
-    <tr><td><img src="etc/thumbnail-cube.png"></td><td>The <b>cube</b> type corresponds to an OpenGL cube map texture, and is the best choice for use in real-time 3D rendering. The TIFF contains each of the six cube faces in a separate page. The cube faithfully represents the full sphere with minimal distortion. (<a href="etc/cube.tif">Example</a>.)</td></tr>
+    <tr><td><img src="etc/thumbnail-rect.png"></td><td>The <b>rect</b> type corresponds to the equirectangular projection, much like the common map of the world. It represents the full sphere, though with significant distortion near the poles. <a href="etc/rect.tif">Example</a></td></tr>
+    <tr><td><img src="etc/thumbnail-ball.png"></td><td>The <b>ball</b> type corresponds to a photograph of a mirrored sphere, or "light probe". It represents the full sphere, but with significant distortion toward the back. <a href="etc/ball.tif">Example</a></td></tr>
+    <tr><td><img src="etc/thumbnail-dome.png"></td><td>The <b>dome</b> type gives a "dome master". This is an image suitable for projection onto a fulldome planetarium. The view looks up and the radius varies linearly with latitude. It represents only half of the sphere. <a href="etc/dome.tif">Example</a></td></tr>
+    <tr><td><img src="etc/thumbnail-hemi.png"></td><td>The <b>hemi</b> type is mathematically identical to the dome type, though the view faces forward instead of up. This corresponds to a photograph taken with an 8mm "fisheye" lens. This too represents only half of the sphere. <a href="etc/hemi.tif">Example</a></td></tr>
+    <tr><td><img src="etc/thumbnail-cube.png"></td><td>The <b>cube</b> type corresponds to an OpenGL cube map texture, and is the best choice for use in real-time 3D rendering. The TIFF contains each of the six cube faces in a separate page. The cube faithfully represents the full sphere with minimal distortion. <a href="etc/cube.tif">Example</a></td></tr>
 </table>
 
 The output is sampled using one of several sampling patterns, which give a quality-speed tradeoff.
