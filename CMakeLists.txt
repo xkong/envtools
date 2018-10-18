@@ -66,7 +66,7 @@ install(TARGETS cubemapPacker
 )
 
 add_executable(extractLights extractLightsVariance.cpp SummedAreaTable.cpp SummedAreaTableRegion.cpp )
-target_link_libraries(extractLights ${TBB_LIBRARIES} ${PNG_LIBRARY} ${OIIO_LIBRARY} ${Boost_LIBRARIES} )
+target_link_libraries(extractLights)
 
 install(TARGETS extractLights
   RUNTIME DESTINATION bin

@@ -12,13 +12,6 @@
 #include <iostream>
 #include <vector>
 
-#include <OpenImageIO/filter.h>
-#include <OpenImageIO/imagebuf.h>
-#include <OpenImageIO/imagebufalgo.h>
-#include <OpenImageIO/imageio.h>
-
-OIIO_NAMESPACE_USING
-
 #include "Light"
 #include "Math"
 #include "SummedAreaTable"
@@ -26,6 +19,42 @@ OIIO_NAMESPACE_USING
 
 #include "extractLightsMerge.cpp"
 #include "extractLightsVarianceDebug.cpp"
+
+#define TINYEXR_IMPLEMENTATION
+#include "tinyexr/tinyexr.h"
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb/stb_image.h"
+
+struct Image {
+  int width;
+  int height;
+  float *data;
+  int nc;
+};
+
+int load_image_exr(const char *filename, Image &image) {
+  const char *err;
+  int ret = LoadEXR(&image.data, &image.width, &image.height, filename, &err);
+  if (ret != 0) {
+    printf("%s", err);
+    return 1;
+  }
+  image.nc = 4;
+  return 0;
+}
+
+int load_image_hdr(const char *filename, Image &image) {
+
+  int x, y, n;
+  float *data = stbi_loadf(filename, &image.width, &image.height, &image.nc, 3);
+  if (!data)
+    return 1;
+
+  image.data = data;
+  image.nc = 3;
+  return 0;
+}
 
 /**
  * Recursively split a region r and append new subregions
@@ -214,21 +243,18 @@ int main(int argc, char **argv) {
     int width, height, nc;
     float *rgba;
 
-    ImageInput *input = ImageInput::open(argv[optind]);
+    Image image;
 
-    if (!input) {
+    if (load_image_hdr(argv[optind], image) != 0) {
       std::cerr << "Cannot open " << argv[1] << " image file" << std::endl;
       return 1;
     }
 
-    const ImageSpec &spec(input->spec());
-    width = spec.width;
-    height = spec.height;
-    nc = spec.nchannels;
-    const uint imageAreaSize = width * height;
-    rgba = new float[imageAreaSize * nc];
-    input->read_image(TypeDesc::FLOAT, rgba);
-    input->close();
+    width = image.width;
+    height = image.height;
+    nc = image.nc;
+    const uint imageAreaSize = image.width * image.height;
+    rgba = image.data;
 
     ////////////////////////////////////////////////
     // create summed area table of luminance image
