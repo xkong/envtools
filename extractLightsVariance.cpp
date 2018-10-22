@@ -26,6 +26,25 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
 
+void print(const char *name, const std::vector<double> &array) {
+  std::cout << name << std::endl;
+  for (int i = 0; i < array.size(); i++) {
+    std::cout << array[i] << std::endl;
+  }
+}
+
+void printVariance(const SatRegionVector &regions) {
+  for (int i = 0; i < regions.size(); i++) {
+    printf("region %d %d %d : %d %d\n", i, regions[i]._x, regions[i]._y,
+           regions[i]._w, regions[i]._h);
+    printf("region %d : %f %f %f %f %f %f\n", i, regions[i]._sum,
+           regions[i]._sum1, regions[i]._sum2, regions[i]._sum3,
+           regions[i]._sum4, regions[i]._sum5);
+    // printf("region %d %f %f %f\n", i, regions[i]._r, regions[i]._g,
+    //        regions[i]._b);
+  }
+}
+
 struct Image {
   int width;
   int height;
@@ -245,7 +264,7 @@ int main(int argc, char **argv) {
 
     Image image;
 
-    if (load_image_hdr(argv[optind], image) != 0) {
+    if (load_image_exr(argv[optind], image) != 0) {
       std::cerr << "Cannot open " << argv[1] << " image file" << std::endl;
       return 1;
     }
@@ -261,12 +280,25 @@ int main(int argc, char **argv) {
     SummedAreaTable lum_sat;
 
     lum_sat.createLum(rgba, width, height, nc);
+#if 0
+    print("sat", lum_sat._sat);
+    print("sat1", lum_sat._sat1);
+    print("sat2", lum_sat._sat2);
+    print("sat3", lum_sat._sat3);
+    print("sat4", lum_sat._sat4);
+    print("sat5", lum_sat._sat5);
 
+    print("r", lum_sat._r);
+    print("g", lum_sat._g);
+    print("b", lum_sat._b);
+#endif
     ////////////////////////////////////////////////
     // apply cut algorithm
     SatRegionVector regions;
 
     medianVarianceCut(lum_sat, numCuts, regions); // max 2^n cuts
+
+    printVariance(regions);
 
     if (regions.empty()) {
       std::cerr << "Cannot cut " << argv[1] << " into light regions"
