@@ -205,7 +205,7 @@ int main(int argc, char** argv)
         int width, height, nc;
         float *rgba;
 
-        ImageInput* input = ImageInput::open ( argv[optind] );
+        auto input = ImageInput::open ( argv[optind] );
 
         if (!input) {
             std::cerr << "Cannot open " << argv[1] << " image file" << std::endl;

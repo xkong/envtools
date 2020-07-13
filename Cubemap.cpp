@@ -427,7 +427,7 @@ float Cubemap::computeImageMaxLuminosity ( const float * const pixels, const int
 
 void Cubemap::MipLevel::write( const std::string& filename ) const
 {
-    ImageOutput* out = ImageOutput::create (filename);
+    auto out = ImageOutput::create (filename);
 
     // Use Create mode for the first level.
     ImageOutput::OpenMode appendmode = ImageOutput::Create;
@@ -441,7 +441,6 @@ void Cubemap::MipLevel::write( const std::string& filename ) const
         appendmode = ImageOutput::AppendSubimage;
     }
     out->close ();
-    delete out;
 }
 
 void Cubemap::write( const std::string& filename ) const
@@ -452,7 +451,7 @@ void Cubemap::write( const std::string& filename ) const
 
 bool Cubemap::MipLevel::load(const std::string& name)
 {
-    ImageInput* input = ImageInput::open ( name );
+    auto input = ImageInput::open ( name );
     if ( !input )
         return false;
 
@@ -476,7 +475,6 @@ bool Cubemap::MipLevel::load(const std::string& name)
         input->read_image( TypeDesc::FLOAT, _images[i]);
     }
     input->close();
-    delete input;
     return true;
 }
 

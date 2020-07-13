@@ -20,7 +20,7 @@ set(Boost_USE_MULTITHREADED ON)
 set(Boost_USE_STATIC_RUNTIME OFF)
 
 #set(CMAKE_C_FLAGS "-std=c99")
-#set(CMAKE_CXX_FLAGS "-std=c++11" )
+set(CMAKE_CXX_FLAGS "-std=c++11" )
 
 find_package(OpenMP)
 if (OPENMP_FOUND)
@@ -109,7 +109,7 @@ install(TARGETS panoramaPacker
   RUNTIME DESTINATION bin
 )
 
-install(PROGRAMS process_environment.py prefilter_opencl.py ggx.cl 
+install(PROGRAMS process_environment.py prefilter_opencl.py ggx.cl
   DESTINATION bin
   )
 
@@ -125,7 +125,7 @@ file(COPY ggx.cl DESTINATION .)
 
 
 #execute_process(COMMAND ${CMAKE_PROGRAM} -E copy_if_different ${fileFrom} ${fileTo})
-  
+
 add_custom_command( TARGET check
   POST_BUILD
   COMMAND ./specularCubemapTest.sh

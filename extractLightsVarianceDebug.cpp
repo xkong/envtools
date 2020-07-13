@@ -216,7 +216,7 @@ void debugDrawLight(const SatRegionVector& regions, const LightVector &lights, c
 
     }
 
-    ImageOutput* out = ImageOutput::create ("out/test_variance.png");
+    auto out = ImageOutput::create ("out/test_variance.png");
     ImageSpec specOut( width, height, nc, TypeDesc::UINT8);
     ImageOutput::OpenMode appendmode = ImageOutput::Create;
     out->open ("out/debug_variance.png", specOut, appendmode);
