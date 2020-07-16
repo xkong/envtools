@@ -638,7 +638,7 @@ def define_arguments():
     parser.add_argument("--backgroundSamples", action="store", dest="background_samples",
                         help="nb samples to compute background 1 to 65536", default=4096)
     parser.add_argument("--encoding", action="store", dest="encoding",
-                        help="string that contains different encoding output", default="luv:rgbm::rgbe:float")
+                        help="string that contains different encoding output", default="luv:rgbm:rgbe:float")
     parser.add_argument("--zip", action="store_true", dest="compress_zip",
                         help="archive in a zip file")
     parser.add_argument("--specularSize", action="store", dest="specular_size",
