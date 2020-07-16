@@ -30,13 +30,9 @@ This code supports reprojection and resampling between any two of the following 
 <table>
 <tbody>
     <tr><td><img src="etc/thumbnail-rect.png"></td><td>The <b>rect</b> type corresponds to the equirectangular projection, much like the common map of the world. It represents the full sphere, though with significant distortion near the poles. (<a href="etc/rect.tif">Example</a>.)</td></tr>
-
     <tr><td><img src="etc/thumbnail-ball.png"></td><td>The <b>ball</b> type corresponds to a photograph of a mirrored sphere, or "light probe". It represents the full sphere, but with significant distortion toward the back. (<a href="etc/ball.tif">Example</a>.)</td></tr>
-
     <tr><td><img src="etc/thumbnail-dome.png"></td><td>The <b>dome</b> type gives a "dome master". This is an image suitable for projection onto a fulldome planetarium. The view looks up and the radius varies linearly with latitude. It represents only half of the sphere. (<a href="etc/dome.tif">Example</a>.)</td></tr>
-
     <tr><td><img src="etc/thumbnail-hemi.png"></td><td>The <b>hemi</b> type is mathematically identical to the dome type, though the view faces forward instead of up. This corresponds to a photograph taken with an 8mm "fisheye" lens. This too represents only half of the sphere. (<a href="etc/hemi.tif">Example</a>.)</td></tr>
-
     <tr><td><img src="etc/thumbnail-cube.png"></td><td>The <b>cube</b> type corresponds to an OpenGL cube map texture, and is the best choice for use in real-time 3D rendering. The TIFF contains each of the six cube faces in a separate page. The cube faithfully represents the full sphere with minimal distortion. (<a href="etc/cube.tif">Example</a>.)</td></tr>
 </tbody>
 </table>
@@ -150,14 +146,14 @@ This tool generates cubemap environment blurred to be used as background environ
 
 ### Lights Extractions
 
-This tool generates lights list in JSON format, extracted from the environment 
+This tool generates lights list in JSON format, extracted from the environment
 
 `extractLights [-a max_light_areas] [-l max_light_length] [-r ratioLight] [-n numCuts] [-d] [-m num_lights] file.hdr|exr`
 
 - `-m num_lights`
 
    export JSON max number of lights and cull others. ( default is 1, 0 is unlimited)
-   
+
 - `-a max_light_areas`
 
    A max limit to the  Area Surface a light can have. (default 0.05)
@@ -174,6 +170,6 @@ This tool generates lights list in JSON format, extracted from the environment
 
     Number of subdivision levers used to generate the lights list. (default is 8)
 
-- `-d` 
-   
+- `-d`
+
     generates a out/debug_variance.png file for debugging light cuts visually. (default is off)
