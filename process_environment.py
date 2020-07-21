@@ -10,21 +10,30 @@ import shutil
 
 DEBUG = False
 
-envIrradiance_cmd = "envIrradiance"
-envPrefilter_cmd = "envPrefilter"
-envIntegrateBRDF_cmd = "envBRDF"
-cubemap_packer_cmd = "cubemapPacker"
-panorama_packer_cmd = "panoramaPacker"
-envremap_cmd = "envremap"
-samplesGGX_cmd = "samplesGGX"
-extractLights_cmd = "extractLights"
-envBackground_cmd = "envBackground"
+envIrradiance_cmd = "./build/envIrradiance"
+envPrefilter_cmd = "./build/envPrefilter"
+envIntegrateBRDF_cmd = "./build/envBRDF"
+cubemap_packer_cmd = "./build/cubemapPacker"
+panorama_packer_cmd = "./build/panoramaPacker"
+envremap_cmd = "./build/envremap"
+samplesGGX_cmd = "./build/samplesGGX"
+extractLights_cmd = "./build/extractLights"
+envBackground_cmd = "./build/envBackground"
 compress_7Zip_cmd = "7z"
 compress_zip_cmd = "zip"
 
 python_dirname = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, python_dirname)
 
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
 
 def execute_command(cmd, **kwargs):
 
@@ -40,7 +49,7 @@ def execute_command(cmd, **kwargs):
             end = time.time()
 
         if kwargs.get("verbose", True) or kwargs.get("print_command", False):
-            print ("{} - {}".format(end - start, cmd))
+            print ("\t{} -\r\n {}".format(end - start, bcolors.UNDERLINE + bcolors.WARNING + cmd + bcolors.ENDC))
 
         if kwargs.get("verbose", True) and output:
             print (output)
@@ -117,6 +126,11 @@ class ProcessEnvironment(object):
         self.background_blur = kwargs.get("background_blur", 0.1)
         self.background_file_base = "background"
         self.background_list = [(self.background_size, self.background_blur)]
+        self.background_list = [
+            ( 512, .04 ),
+            ( 256, .1 ),
+            ( 128, 1. ),
+        ]
 
         self.mipmap_file_base = "mipmap_cubemap"
         self.mipmap_size = 1024
@@ -167,6 +181,8 @@ class ProcessEnvironment(object):
         """ Clean +inf nan from the environment"""
         cmd = "iinfo --stats {}".format(input)
         output_log = execute_command(cmd, verbose=False, print_command=True)
+        # print source image information
+        print output_log
 
         lines_list = output_log.split("\n")
         max_value = sys.float_info.max
@@ -227,7 +243,7 @@ class ProcessEnvironment(object):
         tmp = "/tmp/irr.tif"
 
         cmd = "{} -n {} {} {}".format(envIrradiance_cmd, self.irradiance_size, self.cubemap_highres, tmp)
-        output_log = execute_command(cmd, verbose=False, print_command=True)
+        output_log = execute_command(cmd, verbose=True, print_command=True)
 
         lines_list = output_log.split("\n")
         for line in lines_list:
@@ -239,6 +255,7 @@ class ProcessEnvironment(object):
                 # break
 
     def cubemap_packer(self, pattern, max_level, encoding_string, output):
+        return
         cmd = ""
         write_by_channel = "-c" if self.write_by_channel else ""
         encoding = "-e " + encoding_string
@@ -393,6 +410,10 @@ class ProcessEnvironment(object):
             specular_size, prefilter_stop_size, True, "/tmp/prefilter_fixup")
 
         file_basename = os.path.join(self.working_directory, "specular_cubemap_ue4_{}".format(specular_size))
+
+        # NOTE: convert tif to hdr
+        self.export_cubemap_hdr("/tmp/prefilter_fixup_0.tif", "0", "prefilter_fixup_")
+
         self.cubemap_packer(
             "/tmp/prefilter_fixup_%d.tif", max_level, ":".join(self.encoding_type), file_basename)
 
@@ -406,19 +427,27 @@ class ProcessEnvironment(object):
                     "samples": self.nb_samples
                 })
 
+    def export_cubemap_hdr(self, image_path, folder, prefix = ""):
+        folder = os.path.join(self.working_directory, folder);
+        output_pattern = os.path.join(folder, "{}%d.hdr".format(prefix))
+        cmd = "mkdir {} && oiiotool -v {} -sisplit -o:all=1 {}".format(folder, image_path, output_pattern)
+        execute_command(cmd)
+
+
     def specular_create_prefilter(self, specular_size, prefilter_stop_size):
 
         if not self.cubemap_only:
             self.specular_create_prefilter_panorama(specular_size, prefilter_stop_size)
         self.specular_create_prefilter_cubemap(specular_size, prefilter_stop_size)
 
-    def background_create(self, background_size, background_blur, background_samples=None):
+    def background_create(self, background_size, background_blur, blur_folder, background_samples=None):
 
         samples = self.background_samples
         if background_samples is not None:
             samples = background_samples
 
-        output_filename = "/tmp/background.tiff"
+        # output_filename = "/tmp/background.tiff"
+        output_filename = "/tmp/background_{}.tiff".format(background_size)
         if self.prefilterGPU:
             print "executing gpu prefiltering"
             self.prefilterGPU.run_background_blur(output_filename,
@@ -441,6 +470,8 @@ class ProcessEnvironment(object):
 
             execute_command(cmd)
 
+        self.export_cubemap_hdr(output_filename, blur_folder);
+
         # packer use a pattern, fix cubemap packer ?
         file_basename = os.path.join(self.working_directory, "{}_cubemap_{}_{}".format(
             self.background_file_base,
@@ -462,7 +493,8 @@ class ProcessEnvironment(object):
     def thumbnail_create(self, thumbnail_size):
 
         # compute it one time for panorama
-        file_basename = os.path.join(self.working_directory, "thumbnail_{}.jpg".format(thumbnail_size))
+        # file_basename = os.path.join(self.working_directory, "thumbnail_{}.jpg".format(thumbnail_size))
+        file_basename = os.path.join(self.working_directory, "thumbnail.jpg")
         cmd = "oiiotool {} --resize {}x{} --cpow 0.45454545,0.45454545,0.45454545,1.0 -o {}".format(
             self.panorama_highres, thumbnail_size, thumbnail_size / 2, file_basename)
         execute_command(cmd)
@@ -479,6 +511,7 @@ class ProcessEnvironment(object):
 
         original_file = "/tmp/original_panorama.tif"
 
+        # find max value with iinfo, convert to tif with oiiotool
         self.fix_source_environment(self.input_file, original_file)
         self.panorama_highres = original_file
 
@@ -513,20 +546,20 @@ class ProcessEnvironment(object):
 
         start_tick = time.time()
         self.initBaseTexture()
-        print "== {} initBaseTexture ==".format(time.time() - start_tick)
+        print bcolors.HEADER + bcolors.BOLD + "== {} initBaseTexture ==".format(time.time() - start_tick) + bcolors.ENDC
         print ""
 
         # generate thumbnail
         start_tick = time.time()
         self.thumbnail_create(self.thumbnail_size)
-        print "== {} thumbnail_create ==".format(time.time() - start_tick)
+        print bcolors.HEADER + bcolors.BOLD + "== {} thumbnail_create ==".format(time.time() - start_tick) + bcolors.ENDC
         print ""
 
         # create mipmap to accelerate prefiltering
         # so it needs to be done before background and specular
         start_tick = time.time()
         self.cubemap_specular_create_mipmap(self.mipmap_size)
-        print "== {} cubemap_specular_create_mipmap ==".format(time.time() - start_tick)
+        print bcolors.HEADER + bcolors.BOLD + "== {} cubemap_specular_create_mipmap ==".format(time.time() - start_tick) + bcolors.ENDC
         print ""
 
         if self.approximate_directional_lights:
@@ -536,7 +569,7 @@ class ProcessEnvironment(object):
             # multiple lights
             start_tick = time.time()
             self.extract_lights()
-            print "== {} extract_lights ==".format(time.time() - start_tick)
+            print bcolors.HEADER + bcolors.BOLD + "== {} extract_lights ==".format(time.time() - start_tick) + bcolors.ENDC
             print ""
 
         if not self.force_cpu:
@@ -546,7 +579,7 @@ class ProcessEnvironment(object):
                 print "prepare gpu prefiltering"
                 self.prefilterGPU = Prefilter(self.mipmap_pattern)
                 self.sample_file = self.create_sample_GGX()
-                print "== {} create_sample_GGX ==".format(time.time() - start_tick)
+                print bcolors.HEADER + bcolors.BOLD + "== {} create_sample_GGX ==".format(time.time() - start_tick) + bcolors.ENDC
                 print ""
             except:
                 print "no opencl found fallback to cpu computation"
@@ -555,9 +588,11 @@ class ProcessEnvironment(object):
 
         # generate background
         start_tick = time.time()
+        blur_folder = 1
         for size, blur in self.background_list:
-            self.background_create(size, blur)
-        print "== {} background_create ==".format(time.time() - start_tick)
+            self.background_create(size, blur, str(blur_folder))
+            blur_folder+=1
+        print bcolors.HEADER + bcolors.BOLD + "== {} background_create ==".format(time.time() - start_tick) + bcolors.ENDC
         print ""
 
         # generate prefilter ue4 specular
@@ -565,20 +600,20 @@ class ProcessEnvironment(object):
         prefilter_stop_size = self.prefilter_stop_size  # typically do not use cubemap size < 8
         for size in self.prefilter_list:
             self.specular_create_prefilter(size, prefilter_stop_size)
-        print "== {} specular_create_prefilter ==".format(time.time() - start_tick)
+        print bcolors.HEADER + bcolors.BOLD + "== {} specular_create_prefilter ==".format(time.time() - start_tick) + bcolors.ENDC
         print ""
 
         # generate irradiance*PI panorama/cubemap/sph
         start_tick = time.time()
         self.compute_irradiance()
-        print "== {} compute_irradiance ==".format(time.time() - start_tick)
+        print bcolors.HEADER + bcolors.BOLD + "== {} compute_irradiance ==".format(time.time() - start_tick) + bcolors.ENDC
         print ""
 
         # precompute lut brdf
-        start_tick = time.time()
-        self.compute_brdf_lut_ue4()
-        print "== {} compute_brdf_lut_ue4 ==".format(time.time() - start_tick)
-        print ""
+        # start_tick = time.time()
+        # self.compute_brdf_lut_ue4()
+        # print bcolors.HEADER + bcolors.BOLD + "== {} compute_brdf_lut_ue4 ==".format(time.time() - start_tick) + bcolors.ENDC
+        # print ""
 
         # register mipspecular
         if self.export_mipmap_cubemap:
@@ -588,7 +623,7 @@ class ProcessEnvironment(object):
         if self.can_compress:
             start_tick = time.time()
             self.compress()
-            print "== {} compress ==".format((time.time() - start_tick))
+            print bcolors.HEADER + bcolors.BOLD + "== {} compress ==".format((time.time() - start_tick)) + bcolors.ENDC
             print ""
 
         # write config for this environment
@@ -597,7 +632,7 @@ class ProcessEnvironment(object):
         if self.can_zip:
             start_tick = time.time()
             self.zip()
-            print "== {} zip ==".format((time.time() - start_tick))
+            print bcolors.HEADER + bcolors.BOLD + "== {} zip ==".format((time.time() - start_tick)) + bcolors.ENDC
             print ""
 
         # write working data into output directory
@@ -614,7 +649,7 @@ class ProcessEnvironment(object):
             if not os.path.exists(self.output_directory):
                 os.makedirs(self.output_directory)
             cmd = "mv {}/* {}".format(self.working_directory, self.output_directory)
-            execute_command(cmd, verbose=False)
+            execute_command(cmd, verbose=False, print_command=True)
             shutil.rmtree(self.working_directory)
 
 
@@ -626,7 +661,7 @@ def define_arguments():
     parser.add_argument("file", help="hdr environment [ .hdr .tif .exr ]")
     parser.add_argument("output", help="output directory")
     parser.add_argument("--cubemap-only", action="store_true", dest="cubemap_only",
-                        help="generate only cubemap target, no panorama")
+                        help="generate only cubemap target, no panorama", default=False)
     parser.add_argument("--force-cpu", action="store_true", dest="force_cpu",
                         help="force to compute en cpu, no gpu usage")
     parser.add_argument("--write-by-channel", action="store_true", dest="write_by_channel",
