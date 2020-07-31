@@ -129,7 +129,7 @@ class ProcessEnvironment(object):
         self.background_list = [
             ( 512, .04 ),
             ( 256, .1 ),
-            ( 128, 1. ),
+            ( 128, .9 ),
         ]
 
         self.mipmap_file_base = "mipmap_cubemap"
@@ -412,7 +412,7 @@ class ProcessEnvironment(object):
         file_basename = os.path.join(self.working_directory, "specular_cubemap_ue4_{}".format(specular_size))
 
         # NOTE: convert tif to hdr
-        self.export_cubemap_hdr("/tmp/prefilter_fixup_0.tif", "0", "prefilter_fixup_")
+        self.export_cubemap_hdr("/tmp/prefilter_fixup_0.tif", "prefilter")
 
         self.cubemap_packer(
             "/tmp/prefilter_fixup_%d.tif", max_level, ":".join(self.encoding_type), file_basename)
@@ -587,6 +587,7 @@ class ProcessEnvironment(object):
             print "force computation on cpu"
 
         # generate background
+        self.export_cubemap_hdr("/tmp/specular_1.tif", "0")
         start_tick = time.time()
         blur_folder = 1
         for size, blur in self.background_list:
