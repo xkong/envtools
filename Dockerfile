@@ -39,10 +39,10 @@ RUN wget http://download.savannah.nongnu.org/releases/openexr/openexr-2.2.0.tar.
 RUN tar xvfz openexr-2.2.0.tar.gz && cd openexr-2.2.0 && ./configure --disable-ilmbasetest && make install
 
 # openimageio
-RUN cd /root/ && wget "https://github.com/OpenImageIO/oiio/archive/Release-1.5.16.tar.gz" \
-&& tar xvfz Release-1.5.16.tar.gz && cd oiio-Release-1.5.16 && mkdir release && cd release/ \
+RUN cd /root/ && wget "https://github.com/OpenImageIO/oiio/archive/Release-1.7.17.tar.gz" \
+&& tar xvfz Release-1.7.17.tar.gz && cd oiio-Release-1.7.17 && mkdir release && cd release/ \
 && cmake ../ -DCMAKE_BUILD_TYPE=Release && make install \
-&& cd ../.. && rm -fr oiio-Release-1.5.16 && rm -fr Release-1.5.16.tar.gz
+&& cd ../.. && rm -fr oiio-Release-1.7.17 && rm -fr Release-1.7.17.tar.gz
 
 # envtools
 #RUN rm -Rf /root/envtools
